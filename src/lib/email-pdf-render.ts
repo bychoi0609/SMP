@@ -1,5 +1,37 @@
 import "server-only"
+import { readFileSync } from "node:fs"
+import path from "node:path"
 import type { Browser, Page } from "puppeteer-core"
+
+// Vercel의 서버리스 Chromium(Amazon Linux)에는 "맑은 고딕" 등 한글 시스템 폰트가
+// 없어 한글이 통째로 누락된 PDF가 나온다. 이미 의존성에 있는 Pretendard(가변 X,
+// 정적 woff2)를 base64로 인라인 임베드해 어느 환경에서든 동일하게 렌더링되게 한다.
+function loadFontBase64(weight: "Regular" | "Bold"): string {
+  const fontPath = path.join(
+    process.cwd(),
+    "node_modules/pretendard/dist/web/static/woff2",
+    `Pretendard-${weight}.woff2`,
+  )
+  return readFileSync(fontPath).toString("base64")
+}
+
+let fontFacesCss: string | null = null
+function getFontFacesCss(): string {
+  if (!fontFacesCss) {
+    fontFacesCss = `
+  @font-face {
+    font-family: "Pretendard";
+    font-weight: 400;
+    src: url(data:font/woff2;base64,${loadFontBase64("Regular")}) format("woff2");
+  }
+  @font-face {
+    font-family: "Pretendard";
+    font-weight: 700;
+    src: url(data:font/woff2;base64,${loadFontBase64("Bold")}) format("woff2");
+  }`
+  }
+  return fontFacesCss
+}
 
 // Vercel(서버리스) 환경에서는 puppeteer 완전판의 번들 Chromium을 그대로 못 쓰므로
 // @sparticuz/chromium이 제공하는 서버리스 전용 바이너리로 puppeteer-core를 띄운다.
@@ -61,9 +93,10 @@ function buildFullHtml({ subject, receivedDate, html }: EmailPdfSource): string 
 <head>
 <meta charset="utf-8" />
 <style>
+${getFontFacesCss()}
   * { box-sizing: border-box; }
   body {
-    font-family: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
+    font-family: "Pretendard", "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
     font-size: 12px;
     color: #000;
     margin: 0;
@@ -100,9 +133,11 @@ function getSharedBrowser(): Promise<Browser> {
 }
 
 async function renderOnPage(page: Page, source: EmailPdfSource): Promise<Buffer> {
-  // 외부 리소스(이미지/폰트 등)가 없는 정적 HTML이라 "load" 이벤트까지 기다릴
-  // 필요 없이 DOM 구성만 끝나면 바로 인쇄해도 된다 — 대량 생성 시 체감 속도에 영향이 큼.
+  // 외부 리소스(이미지 등)가 없는 정적 HTML이라 "load" 이벤트까지 기다릴 필요 없이
+  // DOM 구성만 끝나면 바로 인쇄해도 된다 — 대량 생성 시 체감 속도에 영향이 큼.
+  // 다만 인라인 임베드한 한글 폰트(Pretendard)는 비동기로 디코딩되므로 그것만 대기한다.
   await page.setContent(buildFullHtml(source), { waitUntil: "domcontentloaded" })
+  await page.evaluateHandle("document.fonts.ready")
   const pdf = await page.pdf({
     format: "a4",
     printBackground: true,
