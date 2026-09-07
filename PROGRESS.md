@@ -43,7 +43,7 @@
 
 ## Phase 4 — 확장
 
-- [ ] 클라우드 배포
+- [x] 클라우드 배포 — Vercel(boyun/bodado)에 배포 완료. DB는 SQLite → Neon Postgres로 전환하고 기존 데이터(발전소 49건 등) 이관 완료. PDF 생성은 프로덕션에서 `puppeteer-core` + `@sparticuz/chromium`으로 전환(로컬 개발은 기존 puppeteer 그대로 사용). 프로덕션 빌드는 Turbopack이 `outputFileTracingIncludes`를 아직 지원하지 않아 `next build --webpack`으로 고정. 서버리스 Chromium에 한글 폰트가 없어 Pretendard를 PDF에 base64 인라인 임베드해서 해결(pre 태그 구간은 브라우저 기본 monospace로 빠지는 것도 별도로 고쳐야 했음)
 - [ ] 거래처 자동 리포트 발송
 - [ ] 다중 사용자/팀 협업
 
