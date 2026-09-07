@@ -8,7 +8,10 @@ export default defineConfig({
   migrations: {
     path: "prisma/migrations",
   },
+  // CLI(migrate/generate)는 풀링 커넥션 대신 direct 커넥션을 사용해야
+  // prepared statement 충돌 등을 피할 수 있다(Neon 권장 사항). 앱 런타임의
+  // DATABASE_URL(pooled)은 src/lib/prisma.ts에서 별도로 읽는다.
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: process.env["DATABASE_URL_UNPOOLED"],
   },
 });
