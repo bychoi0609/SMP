@@ -2,20 +2,37 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { ChevronDownIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLinkItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
-const NAV_ITEMS = [
-  { href: "/", label: "메인" },
-  { href: "/smp", label: "SMP" },
-  { href: "/rec", label: "REC" },
-  { href: "/reports", label: "리포트" },
-  { href: "/plants", label: "발전소관리" },
-  { href: "/receipts", label: "영수증정리" },
-]
+const NAV_ITEMS = [{ href: "/", label: "메인" }]
+
+const SOLAR_GROUP = {
+  label: "태양광",
+  items: [
+    { href: "/smp", label: "SMP" },
+    { href: "/rec", label: "REC" },
+    { href: "/reports", label: "리포트" },
+    { href: "/plants", label: "발전소관리" },
+  ],
+}
+
+const TRAILING_NAV_ITEMS = [{ href: "/receipts", label: "영수증정리" }]
+
+function isNavActive(pathname: string, href: string) {
+  return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`)
+}
 
 export function SiteHeader() {
   const pathname = usePathname()
+  const isSolarGroupActive = SOLAR_GROUP.items.some((item) => isNavActive(pathname, item.href))
 
   return (
     <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
@@ -29,11 +46,55 @@ export function SiteHeader() {
           </span>
           <nav className="flex items-center gap-1">
             {NAV_ITEMS.map((item) => {
-              const isActive =
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname === item.href || pathname.startsWith(`${item.href}/`)
+              const isActive = isNavActive(pathname, item.href)
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  {item.label}
+                </Link>
+              )
+            })}
 
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(
+                  "flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors outline-none",
+                  isSolarGroupActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                {SOLAR_GROUP.label}
+                <ChevronDownIcon className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {SOLAR_GROUP.items.map((item) => {
+                  const isActive = isNavActive(pathname, item.href)
+                  return (
+                    <DropdownMenuLinkItem
+                      key={item.href}
+                      render={<Link href={item.href} />}
+                      closeOnClick
+                      className={cn(isActive && "bg-accent text-accent-foreground")}
+                    >
+                      {item.label}
+                    </DropdownMenuLinkItem>
+                  )
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {TRAILING_NAV_ITEMS.map((item) => {
+              const isActive = isNavActive(pathname, item.href)
               return (
                 <Link
                   key={item.href}
