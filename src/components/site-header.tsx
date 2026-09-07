@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/rec", label: "REC" },
   { href: "/reports", label: "리포트" },
   { href: "/plants", label: "발전소관리" },
+  { href: "/receipts", label: "영수증정리" },
 ]
 
 export function SiteHeader() {
@@ -31,7 +32,7 @@ export function SiteHeader() {
               const isActive =
                 item.href === "/"
                   ? pathname === "/"
-                  : pathname.startsWith(item.href)
+                  : pathname === item.href || pathname.startsWith(`${item.href}/`)
 
               return (
                 <Link
