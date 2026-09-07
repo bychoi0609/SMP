@@ -1,0 +1,249 @@
+// PRD §6 데이터 모델을 그대로 반영한 스키마
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// 거래처(발전소 소유 회사) — 세금계산서의 "공급자" 정보는 발전소가 아니라
+// 거래처 단위로 한 번만 존재한다 (실제 한전 업로드양식 샘플로 확인됨).
+model ClientGroup {
+  id        Int    @id @default(autoincrement())
+  name      String @unique // 거래처명(내부 관리용 짧은 이름), 예: 키스트론
+  legalName String? // 세금계산서 "공급자 상호"에 들어가는 정식 법인명 (없으면 name 사용), 예: 키스트론 주식회사
+  bizNumber String // 공급자 사업자등록번호
+  ceoName   String // 공급자 성명(대표자)
+  address   String?
+  bizType   String? // 공급자 업태
+  bizItem   String? // 공급자 종목
+  email     String? // 공급자 이메일
+
+  // 이 거래처 소속 발전소들의 한전 요금안내 메일이 도착하는 다음 메일함
+  // 폴더 경로(쉼표로 여러 개 가능). 비워두면 스캔 시 전체 메일함을 검색한다.
+  mailFolders String?
+
+  // 이 거래처의 한전 세금계산서 일괄등록 양식(.xls) 원본 경로 (프로젝트 루트 기준
+  // 상대경로, 스토리지 키로 취급). 발전소별 행이 이미 채워진 실제 양식 파일이며,
+  // 세금계산서 생성 시 이 파일을 그대로 불러와 숫자 항목만 채워 넣는다.
+  // 비어 있으면 해당 거래처는 세금계산서 자동 생성 대상에서 제외된다.
+  invoiceTemplatePath String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plants        PlantMaster[]
+  invoiceBatches InvoiceBatch[]
+  smpCollectionConfirmations SmpMonthlyConfirmation[]
+
+  @@map("client_group")
+}
+
+// 한전(공급받는자) 고정 정보 — 모든 발전소·거래처에서 공통이며 단일 레코드만 존재한다.
+// (종사업장번호·담당이메일만 발전소별로 다르며 PlantMaster에 별도로 있음)
+model KepcoBuyerInfo {
+  id        Int      @id @default(1)
+  bizNumber String   @default("1208200052")
+  name      String   @default("한국전력공사")
+  ceoName   String   @default("김동철")
+  address   String?  @default("전라남도 나주시 전력로 55(빛가람동)")
+  bizType   String?  @default("전기가스")
+  bizItem   String?  @default("전기발전공급")
+  email1    String?  @default("kepcoppa@kepco.co.kr")
+  updatedAt DateTime @updatedAt
+
+  @@map("kepco_buyer_info")
+}
+
+// §6.1 발전소 마스터
+model PlantMaster {
+  id                Int      @id @default(autoincrement())
+  plantName         String // 공식명
+  plantAlias        String? // 비고용 별칭 (세금계산서 "비고"란)
+  // 한전 계약번호. "50000"으로 시작하면 한국전력공사와 SMP계약이 된 발전소,
+  // 비어 있으면(null) 한국전력거래소와 SMP계약이 된 발전소로 인식한다
+  // (전력거래소 발전소는 발전량 등을 수기로 입력한다). getSmpContractType 참고.
+  contractNumber    String?  @unique
+  // 한전 종사업장번호 (발전소가 속한 한전 관할 사업소 기준, 여러 발전소가 공유 가능).
+  // 한국전력거래소(KPX) 발전소는 한전 종사업장번호 자체가 없으므로 null 허용.
+  subBizNumber      String?
+  kepcoContactEmail String? // 한전 담당 이메일2 (ppa0XXX@kepco.co.kr)
+
+  address           String?
+  capacityKw        Decimal? // 용량(kW)
+  constructionOrder Int // 배치 분할 기준 순서 (고유성은 애플리케이션 레벨에서 재정렬 시 보장)
+  // 수평면 일사량 매칭 기준 지역 (경주/양산/포항/함양/의령/북창원/수원/대전/부산/울산 중 하나).
+  // SolarIrradianceMonthly의 지역·귀속월별 값을 이 지역으로 조회해 보고서에 채운다.
+  irradianceRegion  String?
+
+  clientGroupId Int
+  clientGroup   ClientGroup @relation(fields: [clientGroupId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  smpMonthlies SmpMonthly[]
+  recMonthlies RecMonthly[]
+
+  @@map("plant_master")
+}
+
+enum ParseStatus {
+  OK // 정상
+  NEEDS_REVIEW // 검토필요 (PDF 파싱/발전소 매칭 실패)
+
+  @@map("parse_status")
+}
+
+enum TaxInvoiceStatus {
+  NOT_ISSUED // 미발행
+  ISSUED // 발행완료
+
+  @@map("tax_invoice_status")
+}
+
+// §6.2 월별 SMP 데이터
+model SmpMonthly {
+  id               Int          @id @default(autoincrement())
+  plantId          Int? // 발전소명 자동 매칭 실패 시 null (검토 필요 상태로 보관)
+  plant            PlantMaster? @relation(fields: [plantId], references: [id])
+  extractedPlantName    String? // 메일 본문에서 추출된 원본 발전소명 (매칭 실패 시 검토용)
+  extractedContractNumber String? // 메일 제목에서 추출된 계약번호 (매칭 및 신규 발전소 등록용)
+  extractedSubBizNumber   String? // 메일 본문에서 추출된 종사업장번호 (신규 발전소 등록용)
+  extractedAddress        String? // 메일 본문에서 추출된 주소 (신규 발전소 등록용)
+  extractedCapacityKw     Decimal? // 메일 본문에서 추출된 용량(kW) (신규 발전소 등록용)
+  extractedKepcoContactEmail String? // 메일 본문에서 추출된 한전 담당 이메일 (신규 발전소 등록용)
+  billingYearMonth String // 귀속월, "YYYY-MM" — 발전기간 기준
+
+  receivedDate DateTime? // 메일 수신일
+
+  prevReading      Decimal? // 전월지침
+  currReading      Decimal? // 당월지침
+  meterMultiplier  Decimal? // 계기배수
+  generationKwh    Decimal? // 발전량
+
+  baseUnitPrice Decimal? // 기준단가
+  smpUnitPrice  Decimal? // SMP단가
+  lossUnitPrice Decimal? // 손실단가
+
+  supplyAmount Decimal? // 공급가액
+  vatAmount    Decimal? // 세액
+
+  parseStatus ParseStatus @default(OK)
+
+  taxInvoiceStatus TaxInvoiceStatus @default(NOT_ISSUED)
+  batchId          Int?
+  batch            InvoiceBatch?    @relation(fields: [batchId], references: [id])
+
+  sourcePdfPath String? // 파일 저장 위치 키 (로컬 경로 또는 향후 클라우드 스토리지 키)
+
+  mailFolder String? // 수집된 메일함 경로 (중복 수집 방지용)
+  mailUid    Int? // 수집된 메일 UID (중복 수집 방지용)
+  mailSubject   String? // 원본 메일 제목 (PDF 인쇄용)
+  rawEmailHtml  String? // 원본 메일 HTML 본문 캐시 (PDF를 원본 메일 그대로 인쇄하기 위함)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([plantId, billingYearMonth])
+  @@unique([mailFolder, mailUid])
+  @@map("smp_monthly")
+}
+
+enum RecStatus {
+  TENTATIVE // 잠정
+  CONFIRMED // 확정
+
+  @@map("rec_status")
+}
+
+// §6.3 월별 REC 데이터
+model RecMonthly {
+  id               Int    @id @default(autoincrement())
+  plantId          Int
+  plant            PlantMaster @relation(fields: [plantId], references: [id])
+  billingYearMonth String
+
+  quantity  Decimal // 수량
+  unitPrice Decimal // 단가 (기본값=대표단가 상속, 수정 가능)
+  amount    Decimal // 자동계산: 수량 * 단가
+
+  status RecStatus @default(TENTATIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([plantId, billingYearMonth])
+  @@map("rec_monthly")
+}
+
+enum SmpCollectionStatus {
+  DRAFT // 작업중 (SMP 데이터 수집 화면에서 계속 수정 가능)
+  CONFIRMED // 확정 (SMP 데이터 탭에 반영, 재수정하려면 확정 취소 필요)
+
+  @@map("smp_collection_status")
+}
+
+// 거래처·귀속월 단위 "SMP 데이터 수집" 확정 상태. 확정된 (clientGroupId,
+// billingYearMonth) 조합에 속한 발전소의 SmpMonthly 행만 "SMP 데이터" 탭에
+// 누적 표시된다. 확정 해제 시 다시 DRAFT로 돌아가 수집 화면에서 수정 가능.
+model SmpMonthlyConfirmation {
+  id               Int      @id @default(autoincrement())
+  clientGroupId    Int
+  clientGroup      ClientGroup @relation(fields: [clientGroupId], references: [id])
+  billingYearMonth String
+
+  status      SmpCollectionStatus @default(DRAFT)
+  confirmedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientGroupId, billingYearMonth])
+  @@map("smp_monthly_confirmation")
+}
+
+// §6.4 REC 대표 단가 이력
+model RecMonthlyDefault {
+  billingYearMonth String  @id
+  baseUnitPrice    Decimal
+  createdAt        DateTime @default(now())
+
+  @@map("rec_monthly_default")
+}
+
+// 지역별·귀속월별 수평면 일사량 (사용자가 수기입력). PlantMaster.irradianceRegion으로
+// 매칭해 보고서에 채운다.
+model SolarIrradianceMonthly {
+  id               Int      @id @default(autoincrement())
+  region           String
+  billingYearMonth String
+  value            Decimal
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([region, billingYearMonth])
+  @@map("solar_irradiance_monthly")
+}
+
+// §6.5 세금계산서 배치
+// 세금계산서 "공급자"는 거래처 단위로 고정되므로, 배치도 거래처별로 분리해서
+// 번호를 매긴다(같은 달에 거래처가 여러 곳이면 1차/2차...가 거래처마다 따로 있음).
+model InvoiceBatch {
+  id               Int      @id @default(autoincrement())
+  billingYearMonth String
+  clientGroupId    Int
+  clientGroup      ClientGroup @relation(fields: [clientGroupId], references: [id])
+  batchNo          Int // 1차/2차...
+  generatedFilePath String? // 파일 저장 위치 키
+  createdAt        DateTime @default(now())
+
+  smpMonthlies SmpMonthly[]
+
+  @@unique([billingYearMonth, clientGroupId, batchNo])
+  @@map("invoice_batch")
+}
