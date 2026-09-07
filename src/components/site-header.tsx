@@ -5,12 +5,14 @@ import { usePathname } from "next/navigation"
 import { ChevronDownIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuLinkItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { logout } from "@/app/login/actions"
 
 const NAV_ITEMS = [{ href: "/", label: "메인" }]
 
@@ -33,6 +35,8 @@ function isNavActive(pathname: string, href: string) {
 export function SiteHeader() {
   const pathname = usePathname()
   const isSolarGroupActive = SOLAR_GROUP.items.some((item) => isNavActive(pathname, item.href))
+
+  if (pathname === "/login") return null
 
   return (
     <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
@@ -112,6 +116,11 @@ export function SiteHeader() {
               )
             })}
           </nav>
+          <form action={logout} className="ml-auto">
+            <Button variant="ghost" size="sm" type="submit">
+              로그아웃
+            </Button>
+          </form>
         </div>
       </div>
     </header>
