@@ -110,6 +110,9 @@ ${getFontFacesCss()}
   .mail-header div { margin: 1px 0; }
   .mail-header b { font-weight: 700; }
   table { border-collapse: collapse; }
+  /* 브라우저 기본값(monospace)을 쓰는 pre 태그는 한글 글리프가 없는 폰트로
+     떨어질 수 있어 본문 폰트를 명시적으로 강제한다. */
+  pre { font-family: inherit; }
 </style>
 </head>
 <body>
