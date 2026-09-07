@@ -1,5 +1,6 @@
 import "server-only"
 import { copyFile, mkdir, readFile } from "node:fs/promises"
+import os from "node:os"
 import path from "node:path"
 
 import { prisma } from "@/lib/prisma"
@@ -7,8 +8,9 @@ import { matchInvoiceTemplateRows, SHEET_NAME } from "@/lib/invoice-xls-generato
 import { writeInvoiceValuesWithExcel } from "@/lib/invoice-xls-excel-writer"
 
 function outputDir(): string {
-  // 로컬 파일시스템 저장 경로(사용자 .env 설정). 클라우드 전환 시 스토리지 키로 교체 예정.
-  // (빌드 시 "동적 파일시스템 접근" 경고가 뜨지만, 로컬 단일 사용자 앱이라 무해함)
+  // 파일을 만들고 바로 읽어서 base64로 반환하는 스크래치 용도라 영속 저장이 필요 없다.
+  // Vercel(서버리스)은 /tmp만 쓰기 가능하므로 그쪽을, 로컬 개발에서는 OUTPUT_BASE_DIR(기본 ./output)을 쓴다.
+  if (process.env.VERCEL) return path.join(os.tmpdir(), "invoice-output")
   return path.resolve(process.cwd(), process.env.OUTPUT_BASE_DIR ?? "./output")
 }
 

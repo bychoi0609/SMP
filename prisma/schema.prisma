@@ -7,7 +7,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 // 거래처(발전소 소유 회사) — 세금계산서의 "공급자" 정보는 발전소가 아니라

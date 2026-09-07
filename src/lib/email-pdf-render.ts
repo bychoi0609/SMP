@@ -1,5 +1,25 @@
 import "server-only"
-import puppeteer, { type Browser, type Page } from "puppeteer"
+import type { Browser, Page } from "puppeteer-core"
+
+// Vercel(서버리스) 환경에서는 puppeteer 완전판의 번들 Chromium을 그대로 못 쓰므로
+// @sparticuz/chromium이 제공하는 서버리스 전용 바이너리로 puppeteer-core를 띄운다.
+// 로컬 개발 환경(Vercel이 아님)에서는 puppeteer 완전판이 내려받은 Chrome을 그대로 재사용한다.
+async function launchBrowser(): Promise<Browser> {
+  if (process.env.VERCEL) {
+    const [{ default: chromium }, puppeteerCore] = await Promise.all([
+      import("@sparticuz/chromium"),
+      import("puppeteer-core"),
+    ])
+    return puppeteerCore.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    })
+  }
+  const puppeteer = await import("puppeteer")
+  const browser = await puppeteer.default.launch({ headless: true })
+  return browser as unknown as Browser
+}
 
 export type EmailPdfSource = {
   subject: string
@@ -74,7 +94,7 @@ let browserPromise: Promise<Browser> | null = null
 
 function getSharedBrowser(): Promise<Browser> {
   if (!browserPromise) {
-    browserPromise = puppeteer.launch({ headless: true })
+    browserPromise = launchBrowser()
   }
   return browserPromise
 }
@@ -93,7 +113,7 @@ async function renderOnPage(page: Page, source: EmailPdfSource): Promise<Buffer>
 
 // 단건 생성 — 브라우저를 매번 새로 켜고 끈다 (개별 다운로드 버튼용).
 export async function renderEmailToPdf(source: EmailPdfSource): Promise<Buffer> {
-  const browser = await puppeteer.launch({ headless: true })
+  const browser = await launchBrowser()
   try {
     const page = await browser.newPage()
     return await renderOnPage(page, source)
