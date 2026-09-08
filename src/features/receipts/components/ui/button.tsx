@@ -31,3 +31,5 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, VariantPr
 export function Button({ className, variant, size, type = 'button', ...props }: ButtonProps) {
   return <button type={type} className={cn(buttonVariants({ variant, size }), className)} {...props} />
 }
+
+export { buttonVariants }

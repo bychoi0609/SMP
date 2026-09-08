@@ -130,7 +130,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    /* 공용 UI 드롭다운/다이얼로그(z-50)가 이 모달 위에 겹쳐 뜰 수 있어야 해서, 헤더(z-20)보다는
+       높지만 그 공용 오버레이 레이어(z-50)보다는 낮게 둔다. */
+    z-index: 45;
     padding: 20px;
   }
 
