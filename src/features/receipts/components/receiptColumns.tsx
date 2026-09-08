@@ -63,16 +63,22 @@ export function createReceiptColumns({
     {
       key: 'siteName',
       label: '현장명',
+      align: 'center',
       minWidth: 90,
-      render: (r, i) => <TextCell value={r.siteName} onChange={(v) => onChange(i, { siteName: v })} />,
+      render: (r, i) => (
+        <TextCell value={r.siteName} onChange={(v) => onChange(i, { siteName: v })} align="center" />
+      ),
       searchValue: (r) => r.siteName,
       searchLabel: '현장명',
     },
     {
       key: 'description',
       label: '내역',
+      align: 'center',
       minWidth: 90,
-      render: (r, i) => <TextCell value={r.description} onChange={(v) => onChange(i, { description: v })} />,
+      render: (r, i) => (
+        <TextCell value={r.description} onChange={(v) => onChange(i, { description: v })} align="center" />
+      ),
     },
     {
       key: 'accountCode',
@@ -102,7 +108,10 @@ export function createReceiptColumns({
     {
       key: 'taxType',
       label: '과세유형',
-      render: (r, i) => <TextCell value={r.taxType} onChange={(v) => onChange(i, { taxType: v })} />,
+      align: 'center',
+      render: (r, i) => (
+        <TextCell value={r.taxType} onChange={(v) => onChange(i, { taxType: v })} align="center" />
+      ),
     },
     {
       key: 'detail',
