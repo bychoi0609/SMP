@@ -15,6 +15,7 @@ import { detectDirectionFromFileName, parseTaxInvoiceRows } from './lib/parseTax
 import { mergeTaxInvoiceRows } from './lib/mergeTaxInvoiceRows'
 import { groupTaxInvoiceRowsByMonth } from './lib/groupTaxInvoiceByMonth'
 import { groupReceiptsByCard, parseReceiptRows, type ReceiptEntry } from './lib/parseReceipt'
+import { applyReceiptMapping, parseReceiptMappingSheet } from './lib/parseReceiptMapping'
 import { DEFAULT_CARD_MASTER } from './data/cardMaster'
 import type { ReceiptRow, TaxInvoiceRow } from './types/tables'
 import { usePersistentState } from './lib/storage'
@@ -106,8 +107,9 @@ export default function ReceiptsApp() {
   const purchaseBaselineRef = useRef<TaxInvoiceRow[] | null>(null)
   const receiptBaselineRef = useRef<ReceiptEntry[] | null>(null)
   const prevOpenModalTabRef = useRef<MainTab | null>(null)
-  // 영수증 모달 안 "엑셀" 드롭다운의 "엑셀 업로드" 메뉴에서 쓴다 — 모달을 닫지 않고도 카드영수증
-  // 원본 파일을 추가로 올릴 수 있도록, 상단 FileDropzone과 별개의 숨김 입력을 모달 안에 둔다.
+  // 영수증 모달 안 "엑셀" 드롭다운의 "엑셀 업로드" 메뉴에서 쓴다 — 법인카드(양식).xlsx처럼 시트명이
+  // 카드 뒷자리 4개인, 현장명/내역을 사람이 채워넣은 파일을 매칭 전용으로 올리는 숨김 입력이다
+  // (상단 FileDropzone의 원본 카드사 파일 업로드와는 별개의 기능).
   const receiptUploadInputRef = useRef<HTMLInputElement>(null)
 
   // openModalTab이 바뀐 시점(모달을 새로 열거나 닫을 때)에만 한 번, 그 카테고리의 draft/baseline을
@@ -465,6 +467,37 @@ export default function ReceiptsApp() {
     }
   }
 
+  // 영수증 모달의 "엑셀 업로드" — 법인카드(양식).xlsx처럼 시트명이 카드 뒷자리 4개이고 카드번호 컬럼이
+  // 없는 파일을 올려, 날짜/거래처명/공급가액/세액/합계가 모두 일치하는 draft 행을 찾아 현장명/내역만
+  // 채워 넣는다(다른 필드는 건드리지 않음). 일반 카드사 원본 업로드(handleFiles)와는 별개의 기능이다.
+  async function handleReceiptMappingUpload(files: File[]) {
+    let current = receiptDraft ?? receiptEntries
+    for (const file of files) {
+      let workbook: RawWorkbook
+      try {
+        workbook = await readWorkbookFromFile(file)
+      } catch (e) {
+        addError(e instanceof Error ? e.message : `"${file.name}" 파일을 읽는 중 오류가 발생했습니다.`)
+        continue
+      }
+
+      const mappingRows = workbook.sheets.flatMap((sheet) => parseReceiptMappingSheet(sheet))
+      if (mappingRows.length === 0) {
+        addError(
+          `"${file.name}"에서 매핑할 데이터를 찾을 수 없습니다. 시트명이 카드 뒷자리 4자리를 포함하고, "날짜/거래처명/공급가액/세액/합계/현장명/내역" 헤더가 있으며, 현장명 또는 내역이 채워져 있는지 확인해주세요.`,
+        )
+        continue
+      }
+
+      const result = applyReceiptMapping(current, mappingRows)
+      current = result.entries
+      addNotice(
+        `"${file.name}" 매핑 결과 — 현장명/내역 자동 입력 ${result.matchedCount}건, 일치하는 행을 찾지 못함 ${result.unmatchedCount}건.`,
+      )
+    }
+    setReceiptDraft(current)
+  }
+
   const salesColumns = useMemo(
     () =>
       createTaxInvoiceColumns({
@@ -742,7 +775,8 @@ export default function ReceiptsApp() {
                   multiple
                   hidden
                   onChange={(e) => {
-                    if (e.target.files && e.target.files.length > 0) handleFiles(Array.from(e.target.files))
+                    if (e.target.files && e.target.files.length > 0)
+                      handleReceiptMappingUpload(Array.from(e.target.files))
                     e.target.value = ''
                   }}
                 />
