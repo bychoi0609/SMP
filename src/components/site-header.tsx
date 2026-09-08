@@ -26,7 +26,7 @@ const SOLAR_GROUP = {
   ],
 }
 
-const TRAILING_NAV_ITEMS = [{ href: "/receipts", label: "영수증정리" }]
+const TRAILING_NAV_ITEMS = [{ href: "/receipts", label: "영수증/세금계산서" }]
 
 function isNavActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`)
