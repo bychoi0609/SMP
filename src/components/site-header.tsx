@@ -68,6 +68,25 @@ export function SiteHeader() {
               )
             })}
 
+            {TRAILING_NAV_ITEMS.map((item) => {
+              const isActive = isNavActive(pathname, item.href)
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  {item.label}
+                </Link>
+              )
+            })}
+
             <DropdownMenu>
               <DropdownMenuTrigger
                 className={cn(
@@ -96,25 +115,6 @@ export function SiteHeader() {
                 })}
               </DropdownMenuContent>
             </DropdownMenu>
-
-            {TRAILING_NAV_ITEMS.map((item) => {
-              const isActive = isNavActive(pathname, item.href)
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                  aria-current={isActive ? "page" : undefined}
-                >
-                  {item.label}
-                </Link>
-              )
-            })}
           </nav>
           <form action={logout} className="ml-auto">
             <Button variant="ghost" size="sm" type="submit">
