@@ -88,7 +88,7 @@ export function SiteHeader() {
                 {RECEIPTS_GROUP.label}
                 <ChevronDownIcon className="size-3.5" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
+              <DropdownMenuContent align="start" className="w-max min-w-48 whitespace-nowrap">
                 {RECEIPTS_GROUP.items.map((item) => {
                   // 세 항목 모두 하위 경로가 없는 최상위 페이지라 접두사 매칭 없이 정확히 일치할 때만
                   // 활성 표시한다("/receipts"가 "/receipts/monthly-receipts"의 접두사라 겹치는 문제 방지).
@@ -119,7 +119,7 @@ export function SiteHeader() {
                 {SOLAR_GROUP.label}
                 <ChevronDownIcon className="size-3.5" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
+              <DropdownMenuContent align="start" className="w-max min-w-32 whitespace-nowrap">
                 {SOLAR_GROUP.items.map((item) => {
                   const isActive = isNavActive(pathname, item.href)
                   return (
