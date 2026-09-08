@@ -27,3 +27,9 @@ export function cellText(raw: unknown): string {
 export function formatNumber(n: number): string {
   return n.toLocaleString('ko-KR')
 }
+
+// localStorage에 남아있는 예전 스키마(필드 추가 전) 데이터에는 일부 필드가 undefined일 수 있어
+// 방어적으로 걸러낸다.
+export function uniqueNonEmpty(values: (string | undefined | null)[]): string[] {
+  return [...new Set(values.map((v) => (v ?? '').trim()).filter((v) => v !== ''))]
+}

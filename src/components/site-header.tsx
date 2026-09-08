@@ -26,7 +26,14 @@ const SOLAR_GROUP = {
   ],
 }
 
-const TRAILING_NAV_ITEMS = [{ href: "/receipts", label: "영수증/세금계산서" }]
+const RECEIPTS_GROUP = {
+  label: "영수증/세금계산서",
+  items: [
+    { href: "/receipts", label: "영수증/세금계산서 정리" },
+    { href: "/receipts/monthly-receipts", label: "월별 영수증 데이터" },
+    { href: "/receipts/monthly-invoices", label: "월별 세금계산서 데이터" },
+  ],
+}
 
 function isNavActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`)
@@ -35,6 +42,7 @@ function isNavActive(pathname: string, href: string) {
 export function SiteHeader() {
   const pathname = usePathname()
   const isSolarGroupActive = SOLAR_GROUP.items.some((item) => isNavActive(pathname, item.href))
+  const isReceiptsGroupActive = RECEIPTS_GROUP.items.some((item) => isNavActive(pathname, item.href))
 
   if (pathname === "/login") return null
 
@@ -68,25 +76,6 @@ export function SiteHeader() {
               )
             })}
 
-            {TRAILING_NAV_ITEMS.map((item) => {
-              const isActive = isNavActive(pathname, item.href)
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                  aria-current={isActive ? "page" : undefined}
-                >
-                  {item.label}
-                </Link>
-              )
-            })}
-
             <DropdownMenu>
               <DropdownMenuTrigger
                 className={cn(
@@ -102,6 +91,37 @@ export function SiteHeader() {
               <DropdownMenuContent align="start">
                 {SOLAR_GROUP.items.map((item) => {
                   const isActive = isNavActive(pathname, item.href)
+                  return (
+                    <DropdownMenuLinkItem
+                      key={item.href}
+                      render={<Link href={item.href} />}
+                      closeOnClick
+                      className={cn(isActive && "bg-accent text-accent-foreground")}
+                    >
+                      {item.label}
+                    </DropdownMenuLinkItem>
+                  )
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(
+                  "flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors outline-none",
+                  isReceiptsGroupActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                {RECEIPTS_GROUP.label}
+                <ChevronDownIcon className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {RECEIPTS_GROUP.items.map((item) => {
+                  // 세 항목 모두 하위 경로가 없는 최상위 페이지라 접두사 매칭 없이 정확히 일치할 때만
+                  // 활성 표시한다("/receipts"가 "/receipts/monthly-receipts"의 접두사라 겹치는 문제 방지).
+                  const isActive = pathname === item.href
                   return (
                     <DropdownMenuLinkItem
                       key={item.href}

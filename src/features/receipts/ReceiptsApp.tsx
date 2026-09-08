@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
 import './receipts.css'
 import { FileDropzone } from './components/FileDropzone'
 import { ErrorBanner } from './components/ErrorBanner'
@@ -44,38 +43,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { formatNumber } from './lib/format'
-
-// 세금계산서(매출/매입) 표 하단 합계 행: 합계금액/공급가액/세액을 합산해 표시한다.
-function taxInvoiceFooterCells(rows: TaxInvoiceRow[]): Record<string, ReactNode> {
-  return {
-    no: '합계',
-    totalAmount: formatNumber(rows.reduce((sum, r) => sum + r.totalAmount, 0)),
-    supplyAmount: formatNumber(rows.reduce((sum, r) => sum + r.supplyAmount, 0)),
-    taxAmount: formatNumber(rows.reduce((sum, r) => sum + r.taxAmount, 0)),
-  }
-}
-
-// 영수증 표 하단 합계 행: 공급가액/세액/합계를 합산해 표시한다(카드별로 스코프된 rows 기준).
-function receiptFooterCells(rows: ReceiptRow[]): Record<string, ReactNode> {
-  return {
-    date: '합계',
-    supplyAmount: formatNumber(rows.reduce((sum, r) => sum + r.supplyAmount, 0)),
-    taxAmount: formatNumber(rows.reduce((sum, r) => sum + r.taxAmount, 0)),
-    totalAmount: formatNumber(rows.reduce((sum, r) => sum + r.totalAmount, 0)),
-  }
-}
+import { uniqueNonEmpty } from './lib/format'
+import { taxInvoiceFooterCells, receiptFooterCells } from './lib/footerCells'
 
 type MainTab = 'sales' | 'purchase' | 'receipt'
 
 const COUNTERPARTY_LIST_ID = 'dl-counterparty-name'
 const MERCHANT_LIST_ID = 'dl-merchant-name'
-
-// localStorage에 남아있는 예전 스키마(필드 추가 전) 데이터에는 일부 필드가 undefined일 수 있어
-// 방어적으로 걸러낸다.
-function uniqueNonEmpty(values: (string | undefined | null)[]): string[] {
-  return [...new Set(values.map((v) => (v ?? '').trim()).filter((v) => v !== ''))]
-}
 
 export default function ReceiptsApp() {
   const [salesRows, setSalesRows] = usePersistentState<TaxInvoiceRow[]>('salesRows', [])
