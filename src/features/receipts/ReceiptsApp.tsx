@@ -36,7 +36,13 @@ import type { CardMasterEntry } from './data/cardMaster'
 import { AccountRulePanel } from './components/AccountRulePanel'
 import { DEFAULT_ACCOUNT_RULES, type AccountRuleEntry } from './data/accountRules'
 import { applyAccountRulesToReceiptRows, applyAccountRulesToRows } from './lib/accountRules'
-import { Button } from './components/ui/button'
+import { Button, buttonVariants } from './components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { formatNumber } from './lib/format'
 
 // 세금계산서(매출/매입) 표 하단 합계 행: 합계금액/공급가액/세액을 합산해 표시한다.
@@ -100,6 +106,9 @@ export default function ReceiptsApp() {
   const purchaseBaselineRef = useRef<TaxInvoiceRow[] | null>(null)
   const receiptBaselineRef = useRef<ReceiptEntry[] | null>(null)
   const prevOpenModalTabRef = useRef<MainTab | null>(null)
+  // 영수증 모달 안 "엑셀" 드롭다운의 "엑셀 업로드" 메뉴에서 쓴다 — 모달을 닫지 않고도 카드영수증
+  // 원본 파일을 추가로 올릴 수 있도록, 상단 FileDropzone과 별개의 숨김 입력을 모달 안에 둔다.
+  const receiptUploadInputRef = useRef<HTMLInputElement>(null)
 
   // openModalTab이 바뀐 시점(모달을 새로 열거나 닫을 때)에만 한 번, 그 카테고리의 draft/baseline을
   // 최신 실제 상태로 스냅샷한다. useEffect 대신 렌더 중 조건부 setState로 처리해 한 프레임 지연 없이 반영한다.
@@ -713,7 +722,32 @@ export default function ReceiptsApp() {
             rows={draftActiveCardSheet?.rows ?? []}
             searchPlaceholder="거래처명/계정과목 검색..."
             footerCells={receiptFooterCells}
-            toolbarExtra={<Button onClick={handleDownloadReceipt}>엑셀 다운</Button>}
+            toolbarExtra={
+              <>
+                <DropdownMenu>
+                  <DropdownMenuTrigger className={buttonVariants({ variant: 'default', size: 'default' })}>
+                    엑셀
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleDownloadReceipt}>엑셀 다운</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => receiptUploadInputRef.current?.click()}>
+                      엑셀 업로드
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <input
+                  ref={receiptUploadInputRef}
+                  type="file"
+                  accept=".xls,.xlsx"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) handleFiles(Array.from(e.target.files))
+                    e.target.value = ''
+                  }}
+                />
+              </>
+            }
             belowToolbar={
               <nav className="card-tabs">
                 {draftReceiptGrouping.sheets.map((sheet) => (
