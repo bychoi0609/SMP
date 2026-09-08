@@ -80,17 +80,19 @@ export function SiteHeader() {
               <DropdownMenuTrigger
                 className={cn(
                   "flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors outline-none",
-                  isSolarGroupActive
+                  isReceiptsGroupActive
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
-                {SOLAR_GROUP.label}
+                {RECEIPTS_GROUP.label}
                 <ChevronDownIcon className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
-                {SOLAR_GROUP.items.map((item) => {
-                  const isActive = isNavActive(pathname, item.href)
+                {RECEIPTS_GROUP.items.map((item) => {
+                  // 세 항목 모두 하위 경로가 없는 최상위 페이지라 접두사 매칭 없이 정확히 일치할 때만
+                  // 활성 표시한다("/receipts"가 "/receipts/monthly-receipts"의 접두사라 겹치는 문제 방지).
+                  const isActive = pathname === item.href
                   return (
                     <DropdownMenuLinkItem
                       key={item.href}
@@ -109,19 +111,17 @@ export function SiteHeader() {
               <DropdownMenuTrigger
                 className={cn(
                   "flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors outline-none",
-                  isReceiptsGroupActive
+                  isSolarGroupActive
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
-                {RECEIPTS_GROUP.label}
+                {SOLAR_GROUP.label}
                 <ChevronDownIcon className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
-                {RECEIPTS_GROUP.items.map((item) => {
-                  // 세 항목 모두 하위 경로가 없는 최상위 페이지라 접두사 매칭 없이 정확히 일치할 때만
-                  // 활성 표시한다("/receipts"가 "/receipts/monthly-receipts"의 접두사라 겹치는 문제 방지).
-                  const isActive = pathname === item.href
+                {SOLAR_GROUP.items.map((item) => {
+                  const isActive = isNavActive(pathname, item.href)
                   return (
                     <DropdownMenuLinkItem
                       key={item.href}
