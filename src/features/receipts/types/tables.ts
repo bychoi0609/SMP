@@ -34,8 +34,10 @@ export interface ReceiptRow {
   supplyAmount: number // 공급가액
   taxAmount: number // 세액
   totalAmount: number // 합계
+  siteName: string // 현장명
+  description: string // 내역
   accountCode: string // 계정과목
-  siteCode: number | null // 구분번호
+  siteCode: number | null // 구분 (구 "구분번호")
   taxType: '일반' | '불공' | string // 과세유형 (원본 값 그대로)
   detail: string // 세부내역
 }

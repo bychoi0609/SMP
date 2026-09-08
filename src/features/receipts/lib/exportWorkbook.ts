@@ -44,6 +44,21 @@ const WIDTH_SITECODE = 3.38
 const WIDTH_NOTE = 11.38
 const WIDTH_DETAIL = 11
 
+// 영수증 시트 전용 너비 — 세금계산서(매출/매입)는 실제 업로드 템플릿과 열 너비가 정확히 일치해야 해서
+// 위 공용 WIDTH_* 상수를 그대로 쓰지만, 영수증 시트는 그런 고정 템플릿이 없어 현장명/내역 두 컬럼이
+// 늘어난 만큼 전체 가로폭이 커지지 않도록 컬럼별 실제 글자 길이에 맞춰 자체 너비를 따로 둔다.
+const RECEIPT_WIDTH_DATE = 11.84
+const RECEIPT_WIDTH_NAME = 20
+const RECEIPT_WIDTH_SUPPLY = 12
+const RECEIPT_WIDTH_TAX = 11
+const RECEIPT_WIDTH_TOTAL = 12
+const RECEIPT_WIDTH_SITENAME = 12
+const RECEIPT_WIDTH_DESCRIPTION = 10
+const RECEIPT_WIDTH_ACCOUNT = 10
+const RECEIPT_WIDTH_SITECODE = 3.38
+const RECEIPT_WIDTH_TAXTYPE = 7
+const RECEIPT_WIDTH_DETAIL = 9
+
 // exceljs의 타입 정의(Color)에는 argb/theme만 있지만 실제로는 indexed/tint도 지원한다
 // (템플릿 파일을 exceljs로 직접 읽어 확인함) — 타입 정의 누락이라 여기서만 느슨하게 캐스팅한다.
 type LooseColor = { indexed?: number; theme?: number; tint?: number; argb?: string }
@@ -269,15 +284,17 @@ function buildPurchaseInvoiceSheet(wb: ExcelJS.Workbook, group: MonthGroup): Exc
 // PRD 7.2.1 출력 양식 (템플릿 파일에는 영수증 시트가 없어 세금계산서 시트와 동일한 행 높이·열 너비·글꼴
 // 크기만 맞추고, 그 외 배경색·테두리 등 스타일은 넣지 않는다)
 const RECEIPT_COLUMNS: { header: string; width: number }[] = [
-  { header: '날짜', width: WIDTH_DATE },
-  { header: '거래처명', width: WIDTH_NAME },
-  { header: '공급가액', width: WIDTH_SUPPLY },
-  { header: '세액', width: WIDTH_TAX },
-  { header: '합계', width: WIDTH_TOTAL },
-  { header: '계정과목', width: WIDTH_ACCOUNT },
-  { header: '구분번호', width: WIDTH_SITECODE },
-  { header: '과세유형', width: WIDTH_TAXTYPE },
-  { header: '세부내역', width: WIDTH_DETAIL },
+  { header: '날짜', width: RECEIPT_WIDTH_DATE },
+  { header: '거래처명', width: RECEIPT_WIDTH_NAME },
+  { header: '공급가액', width: RECEIPT_WIDTH_SUPPLY },
+  { header: '세액', width: RECEIPT_WIDTH_TAX },
+  { header: '합계', width: RECEIPT_WIDTH_TOTAL },
+  { header: '현장명', width: RECEIPT_WIDTH_SITENAME },
+  { header: '내역', width: RECEIPT_WIDTH_DESCRIPTION },
+  { header: '계정과목', width: RECEIPT_WIDTH_ACCOUNT },
+  { header: '구분', width: RECEIPT_WIDTH_SITECODE },
+  { header: '과세유형', width: RECEIPT_WIDTH_TAXTYPE },
+  { header: '세부내역', width: RECEIPT_WIDTH_DETAIL },
 ]
 
 function buildReceiptSheet(wb: ExcelJS.Workbook, sheet: ReceiptSheet) {
@@ -296,7 +313,19 @@ function buildReceiptSheet(wb: ExcelJS.Workbook, sheet: ReceiptSheet) {
   })
 
   for (const r of sheet.rows) {
-    const row = ws.addRow([r.date, r.merchantName, r.supplyAmount, r.taxAmount, r.totalAmount, r.accountCode, r.siteCode ?? '', r.taxType, r.detail])
+    const row = ws.addRow([
+      r.date,
+      r.merchantName,
+      r.supplyAmount,
+      r.taxAmount,
+      r.totalAmount,
+      r.siteName,
+      r.description,
+      r.accountCode,
+      r.siteCode ?? '',
+      r.taxType,
+      r.detail,
+    ])
     row.height = ROW_HEIGHTS.data
     row.eachCell((cell) => {
       cell.font = FONT
