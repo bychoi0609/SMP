@@ -6,6 +6,7 @@ interface ReceiptColumnOptions {
   onChange: (rowIndex: number, patch: Partial<ReceiptRow>) => void
   merchantNameListId: string
   accountCodeOptions: string[]
+  detailOptions: string[]
 }
 
 // PRD 7.2.1 출력 양식 컬럼 순서 그대로, 각 셀은 인라인 편집 가능.
@@ -13,6 +14,7 @@ export function createReceiptColumns({
   onChange,
   merchantNameListId,
   accountCodeOptions,
+  detailOptions,
 }: ReceiptColumnOptions): Column<ReceiptRow>[] {
   return [
     {
@@ -92,7 +94,14 @@ export function createReceiptColumns({
       key: 'detail',
       label: '세부내역',
       align: 'center',
-      render: (r, i) => <TextCell value={r.detail} onChange={(v) => onChange(i, { detail: v })} align="center" />,
+      render: (r, i) => (
+        <AccountCodeCell
+          value={r.detail}
+          onChange={(v) => onChange(i, { detail: v })}
+          options={detailOptions}
+          align="center"
+        />
+      ),
     },
   ]
 }

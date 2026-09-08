@@ -213,6 +213,11 @@ export default function ReceiptsApp() {
     () => uniqueNonEmpty([...receiptEntries.map((e) => e.row.accountCode), ...receiptRuleAccountCodes]),
     [receiptEntries, receiptRuleAccountCodes],
   )
+  // 세부내역도 계정과목처럼 엑셀식 자동완성 입력이라 지금까지 쓰인 값을 후보로 보여준다.
+  const receiptDetailOptions = useMemo(
+    () => uniqueNonEmpty(receiptEntries.map((e) => e.row.detail)),
+    [receiptEntries],
+  )
   // 규칙 목록 관리 화면의 자동완성은 구분 구분 없이 지금까지 쓰인 모든 계정과목을 후보로 보여준다.
   const ruleListAccountCodes = useMemo(
     () =>
@@ -499,8 +504,9 @@ export default function ReceiptsApp() {
         },
         merchantNameListId: MERCHANT_LIST_ID,
         accountCodeOptions: receiptAccountCodes,
+        detailOptions: receiptDetailOptions,
       }),
-    [draftActiveCardSheet, receiptAccountCodes, accountRules],
+    [draftActiveCardSheet, receiptAccountCodes, receiptDetailOptions, accountRules],
   )
 
   return (
