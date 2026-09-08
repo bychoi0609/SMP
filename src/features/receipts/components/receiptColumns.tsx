@@ -26,7 +26,7 @@ export function createReceiptColumns({
     {
       key: 'merchantName',
       label: '거래처명',
-      minWidth: 180,
+      minWidth: 150,
       render: (r, i) => (
         <TextCell
           value={r.merchantName}
@@ -61,10 +61,24 @@ export function createReceiptColumns({
       sortValue: (r) => r.totalAmount,
     },
     {
+      key: 'siteName',
+      label: '현장명',
+      minWidth: 90,
+      render: (r, i) => <TextCell value={r.siteName} onChange={(v) => onChange(i, { siteName: v })} />,
+      searchValue: (r) => r.siteName,
+      searchLabel: '현장명',
+    },
+    {
+      key: 'description',
+      label: '내역',
+      minWidth: 90,
+      render: (r, i) => <TextCell value={r.description} onChange={(v) => onChange(i, { description: v })} />,
+    },
+    {
       key: 'accountCode',
       label: '계정과목',
       align: 'center',
-      minWidth: 120,
+      minWidth: 110,
       render: (r, i) => (
         <AccountCodeCell
           value={r.accountCode}
@@ -78,9 +92,9 @@ export function createReceiptColumns({
     },
     {
       key: 'siteCode',
-      label: '구분번호',
+      label: '구분',
       align: 'center',
-      minWidth: 50,
+      minWidth: 40,
       render: (r, i) => (
         <OptionalNumberCell value={r.siteCode} onChange={(v) => onChange(i, { siteCode: v })} align="center" />
       ),

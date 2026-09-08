@@ -40,6 +40,8 @@ export function parseReceiptRows(rows: string[][], headerRowIndex: number): Rece
         supplyAmount: parseAmount(r[COL.supplyAmount]),
         taxAmount: parseAmount(r[COL.taxAmount]),
         totalAmount: parseAmount(r[COL.totalAmount]),
+        siteName: '',
+        description: '',
         accountCode: '',
         siteCode: null,
         taxType: cellText(r[COL.taxType]),

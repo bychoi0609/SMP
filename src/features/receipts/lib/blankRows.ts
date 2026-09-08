@@ -29,6 +29,8 @@ export function createBlankReceiptRow(): ReceiptRow {
     supplyAmount: 0,
     taxAmount: 0,
     totalAmount: 0,
+    siteName: '',
+    description: '',
     accountCode: '',
     siteCode: null,
     taxType: '',
