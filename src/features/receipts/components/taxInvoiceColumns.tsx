@@ -12,6 +12,9 @@ interface TaxInvoiceColumnOptions {
   direction: TaxInvoiceDirection
   // true면 셀을 입력창이 아닌 텍스트로만 보여준다("월별 세금계산서 데이터" 보기 화면 전용).
   readOnly?: boolean
+  // 정리 화면의 "전체" 탭처럼 확정된 달과 안 된 달이 한 화면에 섞여 있을 때, 행(rowIndex) 단위로
+  // 확정(잠금) 여부를 판단한다. true를 반환한 행은 readOnly와 동일하게 텍스트로만 보여준다.
+  isRowLocked?: (rowIndex: number) => boolean
 }
 
 // 매출 세금계산서에는 필요 없는 컬럼(구분번호/비고/세부내역)이라 매출 표에서만 뺀다.
@@ -35,6 +38,7 @@ export function createTaxInvoiceColumns({
   paymentBasisOptions = [],
   direction,
   readOnly = false,
+  isRowLocked,
 }: TaxInvoiceColumnOptions): Column<TaxInvoiceRow>[] {
   const columns: Column<TaxInvoiceRow>[] = [
     { key: 'no', label: '번호', align: 'center', render: (r) => r.no, sortValue: (r) => r.no },
@@ -43,7 +47,7 @@ export function createTaxInvoiceColumns({
       label: '작성일자',
       align: 'center',
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.writtenDate
         ) : (
           <DateCell value={r.writtenDate} onChange={(v) => onChange!(i, { writtenDate: v })} />
@@ -62,7 +66,7 @@ export function createTaxInvoiceColumns({
       align: 'center',
       minWidth: 120,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.counterpartyBizNo
         ) : (
           <TextCell
@@ -77,7 +81,7 @@ export function createTaxInvoiceColumns({
       label: '상호',
       minWidth: 180,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.counterpartyName
         ) : (
           <TextCell
@@ -96,7 +100,7 @@ export function createTaxInvoiceColumns({
       align: 'center',
       minWidth: 110,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           formatNumber(r.totalAmount)
         ) : (
           <CurrencyCell value={r.totalAmount} onChange={(v) => onChange!(i, { totalAmount: v })} />
@@ -109,7 +113,7 @@ export function createTaxInvoiceColumns({
       align: 'center',
       minWidth: 110,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           formatNumber(r.supplyAmount)
         ) : (
           <CurrencyCell value={r.supplyAmount} onChange={(v) => onChange!(i, { supplyAmount: v })} />
@@ -121,7 +125,7 @@ export function createTaxInvoiceColumns({
       align: 'center',
       minWidth: 100,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           formatNumber(r.taxAmount)
         ) : (
           <CurrencyCell value={r.taxAmount} onChange={(v) => onChange!(i, { taxAmount: v })} />
@@ -132,7 +136,7 @@ export function createTaxInvoiceColumns({
       label: '품목명',
       minWidth: 180,
       render: (r, i) =>
-        readOnly ? r.itemName : <TextCell value={r.itemName} onChange={(v) => onChange!(i, { itemName: v })} />,
+        readOnly || isRowLocked?.(i) ? r.itemName : <TextCell value={r.itemName} onChange={(v) => onChange!(i, { itemName: v })} />,
       searchValue: (r) => r.itemName,
       searchLabel: '품목명',
     },
@@ -141,7 +145,7 @@ export function createTaxInvoiceColumns({
       label: '유형1',
       minWidth: 85,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.issueType
         ) : (
           <SelectCell
@@ -156,7 +160,7 @@ export function createTaxInvoiceColumns({
       label: '유형2',
       minWidth: 85,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.taxType
         ) : (
           <SelectCell
@@ -172,7 +176,7 @@ export function createTaxInvoiceColumns({
       minWidth: accountCodeMinWidth,
       align: 'center',
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.accountCode
         ) : (
           <AccountCodeCell
@@ -190,7 +194,7 @@ export function createTaxInvoiceColumns({
       label: '구분번호',
       align: 'center',
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           (r.siteCode ?? '')
         ) : (
           <OptionalNumberCell value={r.siteCode} onChange={(v) => onChange!(i, { siteCode: v })} align="center" />
@@ -202,7 +206,7 @@ export function createTaxInvoiceColumns({
       minWidth: 120,
       align: 'center',
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.paymentBasisAccount
         ) : (
           <AccountCodeCell
@@ -217,7 +221,7 @@ export function createTaxInvoiceColumns({
       key: 'paymentDate',
       label: '결제일',
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.paymentDate
         ) : (
           <DateCell
@@ -233,20 +237,21 @@ export function createTaxInvoiceColumns({
     {
       key: 'note',
       label: '비고',
-      render: (r, i) => (readOnly ? r.note : <TextCell value={r.note} onChange={(v) => onChange!(i, { note: v })} />),
+      render: (r, i) =>
+        readOnly || isRowLocked?.(i) ? r.note : <TextCell value={r.note} onChange={(v) => onChange!(i, { note: v })} />,
     },
     {
       key: 'project',
       label: '프로젝트',
       render: (r, i) =>
-        readOnly ? r.project : <TextCell value={r.project} onChange={(v) => onChange!(i, { project: v })} />,
+        readOnly || isRowLocked?.(i) ? r.project : <TextCell value={r.project} onChange={(v) => onChange!(i, { project: v })} />,
     },
     {
       key: 'detail',
       label: '세부내역',
       align: 'center',
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.detail
         ) : (
           <TextCell value={r.detail} onChange={(v) => onChange!(i, { detail: v })} align="center" />

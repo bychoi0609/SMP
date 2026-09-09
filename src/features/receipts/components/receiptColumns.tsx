@@ -10,6 +10,9 @@ interface ReceiptColumnOptions {
   detailOptions?: string[]
   // true면 셀을 입력창이 아닌 텍스트로만 보여준다("월별 영수증 데이터" 보기 화면 전용).
   readOnly?: boolean
+  // 카드별 화면처럼 확정된 달과 안 된 달이 한 화면에 섞여 있을 때, 행(rowIndex) 단위로 확정(잠금)
+  // 여부를 판단한다. true를 반환한 행은 readOnly와 동일하게 텍스트로만 보여준다.
+  isRowLocked?: (rowIndex: number) => boolean
 }
 
 // PRD 7.2.1 출력 양식 컬럼 순서 그대로, 각 셀은 인라인 편집 가능(readOnly면 텍스트만 표시).
@@ -19,13 +22,14 @@ export function createReceiptColumns({
   accountCodeOptions = [],
   detailOptions = [],
   readOnly = false,
+  isRowLocked,
 }: ReceiptColumnOptions): Column<ReceiptRow>[] {
   return [
     {
       key: 'date',
       label: '날짜',
       render: (r, i) =>
-        readOnly ? r.date : <DateCell value={r.date} onChange={(v) => onChange!(i, { date: v })} />,
+        readOnly || isRowLocked?.(i) ? r.date : <DateCell value={r.date} onChange={(v) => onChange!(i, { date: v })} />,
       sortValue: (r) => r.date,
     },
     {
@@ -33,7 +37,7 @@ export function createReceiptColumns({
       label: '거래처명',
       minWidth: 150,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.merchantName
         ) : (
           <TextCell
@@ -52,7 +56,7 @@ export function createReceiptColumns({
       align: 'center',
       minWidth: 100,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           formatNumber(r.supplyAmount)
         ) : (
           <CurrencyCell value={r.supplyAmount} onChange={(v) => onChange!(i, { supplyAmount: v })} />
@@ -64,7 +68,7 @@ export function createReceiptColumns({
       align: 'center',
       minWidth: 90,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           formatNumber(r.taxAmount)
         ) : (
           <CurrencyCell value={r.taxAmount} onChange={(v) => onChange!(i, { taxAmount: v })} />
@@ -76,7 +80,7 @@ export function createReceiptColumns({
       align: 'center',
       minWidth: 100,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           formatNumber(r.totalAmount)
         ) : (
           <CurrencyCell value={r.totalAmount} onChange={(v) => onChange!(i, { totalAmount: v })} />
@@ -89,7 +93,7 @@ export function createReceiptColumns({
       align: 'center',
       minWidth: 90,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.siteName
         ) : (
           <TextCell value={r.siteName} onChange={(v) => onChange!(i, { siteName: v })} align="center" />
@@ -103,7 +107,7 @@ export function createReceiptColumns({
       align: 'center',
       minWidth: 90,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.description
         ) : (
           <TextCell value={r.description} onChange={(v) => onChange!(i, { description: v })} align="center" />
@@ -115,7 +119,7 @@ export function createReceiptColumns({
       align: 'center',
       minWidth: 110,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.accountCode
         ) : (
           <AccountCodeCell
@@ -134,7 +138,7 @@ export function createReceiptColumns({
       align: 'center',
       minWidth: 40,
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           (r.siteCode ?? '')
         ) : (
           <OptionalNumberCell value={r.siteCode} onChange={(v) => onChange!(i, { siteCode: v })} align="center" />
@@ -145,7 +149,7 @@ export function createReceiptColumns({
       label: '과세유형',
       align: 'center',
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.taxType
         ) : (
           <TextCell value={r.taxType} onChange={(v) => onChange!(i, { taxType: v })} align="center" />
@@ -156,7 +160,7 @@ export function createReceiptColumns({
       label: '세부내역',
       align: 'center',
       render: (r, i) =>
-        readOnly ? (
+        readOnly || isRowLocked?.(i) ? (
           r.detail
         ) : (
           <AccountCodeCell

@@ -247,3 +247,103 @@ model InvoiceBatch {
   @@unique([billingYearMonth, clientGroupId, batchNo])
   @@map("invoice_batch")
 }
+
+// ── 영수증/세금계산서 정리 확정 ───────────────────────────────────────────
+// SmpMonthlyConfirmation과 같은 아이디엄이지만 거래처 축이 없다(1인 사업자 자체 장부).
+
+enum ReceiptCategory {
+  SALES // 세금계산서(매출)
+  PURCHASE // 세금계산서(매입)
+  RECEIPT // 카드 영수증
+
+  @@map("receipt_category")
+}
+
+enum ReceiptConfirmationStatus {
+  DRAFT // 정리 화면에서 계속 수정 가능
+  CONFIRMED // 확정됨 — 월별 데이터 화면에 반영, 정리 화면에서는 잠금
+
+  @@map("receipt_confirmation_status")
+}
+
+// 카테고리(매출/매입/영수증)·귀속월 단위 "영수증·세금계산서 정리" 확정 상태. 확정된 조합의
+// 데이터만 "월별 영수증/세금계산서 데이터" 화면에 누적 표시된다. 확정 취소 시 다시 DRAFT로
+// 돌아가 정리 화면에서 수정 가능해진다.
+model ReceiptMonthlyConfirmation {
+  id               Int             @id @default(autoincrement())
+  category         ReceiptCategory
+  billingYearMonth String
+
+  status      ReceiptConfirmationStatus @default(DRAFT)
+  confirmedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([category, billingYearMonth])
+  @@map("receipt_monthly_confirmation")
+}
+
+enum TaxInvoiceDirection {
+  SALES
+  PURCHASE
+
+  @@map("tax_invoice_direction")
+}
+
+// 확정 시점에 정리 화면(브라우저 draft)에서 스냅샷으로 넘어오는 세금계산서(매출/매입) 행.
+// 매출/매입은 컬럼이 완전히 같아 테이블을 나누지 않고 direction 판별 컬럼으로만 구분한다.
+model ReceiptTaxInvoiceRow {
+  id               Int                 @id @default(autoincrement())
+  direction        TaxInvoiceDirection
+  billingYearMonth String // = writtenDate.slice(0,7)
+
+  writtenDate         String // 'YYYY-MM-DD'
+  counterpartyBizNo   String
+  counterpartyName    String
+  totalAmount         Decimal
+  supplyAmount        Decimal
+  taxAmount           Decimal
+  itemName            String
+  issueType           String // '전자' | '종이' (자유 문자열)
+  taxType             String // '과세' | '불공' (자유 문자열)
+  accountCode         String
+  siteCode            Int?
+  paymentBasisAccount String
+  paymentDate         String
+  note                String
+  project             String
+  detail              String
+  approvalNo          String? // 홈택스 승인번호 — 중복 방지 키
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([direction, billingYearMonth])
+  @@map("receipt_tax_invoice_row")
+}
+
+// 확정 시점에 넘어오는 카드 영수증 행 스냅샷.
+model ReceiptCardRow {
+  id               Int    @id @default(autoincrement())
+  last4            String // 카드 뒷자리 4자리 (카드 마스터/닉네임은 여전히 localStorage 관리)
+  billingYearMonth String // = date.slice(0,7)
+
+  date         String
+  merchantName String
+  supplyAmount Decimal
+  taxAmount    Decimal
+  totalAmount  Decimal
+  siteName     String
+  description  String
+  accountCode  String
+  siteCode     Int?
+  taxType      String
+  detail       String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([billingYearMonth])
+  @@map("receipt_card_row")
+}

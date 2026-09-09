@@ -1,5 +1,7 @@
 import { MonthlyReceiptsClient } from "./monthly-receipts-client"
+import { getConfirmedReceiptCardRowsAction } from "@/app/receipts/actions"
 
-export default function MonthlyReceiptsPage() {
-  return <MonthlyReceiptsClient />
+export default async function MonthlyReceiptsPage() {
+  const entries = await getConfirmedReceiptCardRowsAction()
+  return <MonthlyReceiptsClient initialEntries={entries} />
 }

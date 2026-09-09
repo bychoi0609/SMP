@@ -23,6 +23,8 @@ interface TableProps<T> {
   rows: T[]
   emptyMessage?: string
   onDeleteRow?: (rowIndex: number) => void
+  // true를 반환한 행은 삭제 버튼을 비활성화한다(확정되어 잠긴 행).
+  isRowDisabled?: (rowIndex: number) => boolean
   onAddRow?: () => void
   addRowLabel?: string
   onClearAll?: () => void
@@ -45,6 +47,7 @@ export function Table<T>({
   rows,
   emptyMessage = '표시할 데이터가 없습니다.',
   onDeleteRow,
+  isRowDisabled,
   onAddRow,
   addRowLabel = '+ 행 추가',
   onClearAll,
@@ -205,6 +208,7 @@ export function Table<T>({
                         variant="destructive"
                         size="xs"
                         aria-label="행 삭제"
+                        disabled={isRowDisabled?.(rowIndex)}
                         onClick={() => onDeleteRow(rowIndex)}
                       >
                         삭제
