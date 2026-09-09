@@ -1,6 +1,8 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { Lock, Unlock } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import './receipts.css'
 import { FileDropzone } from './components/FileDropzone'
 import { ErrorBanner } from './components/ErrorBanner'
@@ -13,6 +15,7 @@ import { detectSheetKind } from './lib/detectKind'
 import { detectDirectionFromFileName, parseTaxInvoiceRows } from './lib/parseTaxInvoice'
 import { mergeTaxInvoiceRows } from './lib/mergeTaxInvoiceRows'
 import { groupTaxInvoiceRowsByMonth } from './lib/groupTaxInvoiceByMonth'
+import { groupReceiptsByMonth } from './lib/groupReceiptsByMonth'
 import { groupReceiptsByCard, parseReceiptRows, type ReceiptEntry } from './lib/parseReceipt'
 import { applyReceiptMapping, parseReceiptMappingSheet } from './lib/parseReceiptMapping'
 import { DEFAULT_CARD_MASTER } from './data/cardMaster'
@@ -45,6 +48,14 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { uniqueNonEmpty } from './lib/format'
 import { taxInvoiceFooterCells, receiptFooterCells } from './lib/footerCells'
+import {
+  confirmReceiptCardMonthAction,
+  confirmTaxInvoiceMonthAction,
+  getConfirmedReceiptMonthsAction,
+  unconfirmReceiptCardMonthAction,
+  unconfirmTaxInvoiceMonthAction,
+  type ReceiptCategoryValue,
+} from '@/app/receipts/actions'
 
 type MainTab = 'sales' | 'purchase' | 'receipt'
 
@@ -70,6 +81,30 @@ export default function ReceiptsApp() {
   const [purchaseMonthFilter, setPurchaseMonthFilter] = useState<string>('all')
   const [showCardMaster, setShowCardMaster] = useState(false)
   const [showAccountRules, setShowAccountRules] = useState(false)
+
+  // 카테고리별 확정(귀속월) 상태 — 마운트 시 서버에서 불러오고, 확정/확정취소 후 다시 불러온다.
+  // 확정된 달에 속한 행은 정리 화면에서 잠긴다("월별 세금계산서/영수증 데이터" 화면에 반영됨).
+  const [salesConfirmedMonths, setSalesConfirmedMonths] = useState<Set<string>>(new Set())
+  const [purchaseConfirmedMonths, setPurchaseConfirmedMonths] = useState<Set<string>>(new Set())
+  const [receiptConfirmedMonths, setReceiptConfirmedMonths] = useState<Set<string>>(new Set())
+  const [isConfirming, startConfirming] = useTransition()
+  // 영수증 탭은 월 탭이 따로 없어(카드 탭만 있음), 확정할 월을 고르는 별도 선택 상태를 둔다.
+  const [receiptConfirmMonth, setReceiptConfirmMonth] = useState('')
+
+  function refreshConfirmedMonths(category: ReceiptCategoryValue) {
+    getConfirmedReceiptMonthsAction(category).then((months) => {
+      const set = new Set(months)
+      if (category === 'SALES') setSalesConfirmedMonths(set)
+      else if (category === 'PURCHASE') setPurchaseConfirmedMonths(set)
+      else setReceiptConfirmedMonths(set)
+    })
+  }
+
+  useEffect(() => {
+    refreshConfirmedMonths('SALES')
+    refreshConfirmedMonths('PURCHASE')
+    refreshConfirmedMonths('RECEIPT')
+  }, [])
 
   // 각 카테고리(매출/매입/영수증) 모달은 실제 상태를 바로 고치지 않고 임시 작업본(draft)에서 편집한다.
   // 모달을 닫을 때 열었을 당시 스냅샷(baseline)과 달라졌으면 저장 여부를 확인하고, "확인"을 눌러야
@@ -163,6 +198,94 @@ export default function ReceiptsApp() {
     return { rows: group?.rows ?? [], globalIndices: group?.globalIndices ?? [] }
   }, [purchaseDraft, purchaseMonthGroups, effectivePurchaseMonthFilter])
 
+  // 확정된 달에 속한 draft 배열 인덱스(전역 인덱스) 집합 — "전체" 탭처럼 확정/미확정 달이 섞여 있어도
+  // 행 단위로 잠글 수 있도록 한다.
+  const lockedSalesGlobalIndices = useMemo(
+    () =>
+      new Set(
+        salesMonthGroups.filter((g) => salesConfirmedMonths.has(g.month)).flatMap((g) => g.globalIndices),
+      ),
+    [salesMonthGroups, salesConfirmedMonths],
+  )
+  const lockedPurchaseGlobalIndices = useMemo(
+    () =>
+      new Set(
+        purchaseMonthGroups.filter((g) => purchaseConfirmedMonths.has(g.month)).flatMap((g) => g.globalIndices),
+      ),
+    [purchaseMonthGroups, purchaseConfirmedMonths],
+  )
+
+  // 영수증은 카드 탭만 있고 월 탭이 없으므로, 확정용 월 목록/잠금 판정은 draft 전체(카드 무관)를
+  // 기준으로 따로 계산한다.
+  const receiptMonthGroups = useMemo(() => groupReceiptsByMonth(receiptDraft ?? []), [receiptDraft])
+  const lockedReceiptGlobalIndices = useMemo(
+    () =>
+      new Set(
+        receiptMonthGroups.filter((g) => receiptConfirmedMonths.has(g.month)).flatMap((g) => g.globalIndices),
+      ),
+    [receiptMonthGroups, receiptConfirmedMonths],
+  )
+
+  // 확정 대상 월 선택값이 (초기화 등으로) 더 이상 존재하지 않으면 첫 번째 달로 되돌린다.
+  if (
+    receiptMonthGroups.length > 0 &&
+    !receiptMonthGroups.some((g) => g.month === receiptConfirmMonth)
+  ) {
+    setReceiptConfirmMonth(receiptMonthGroups[0].month)
+  } else if (receiptMonthGroups.length === 0 && receiptConfirmMonth !== '') {
+    setReceiptConfirmMonth('')
+  }
+
+  function handleConfirmSalesMonth() {
+    if (effectiveSalesMonthFilter === 'all') return
+    startConfirming(async () => {
+      const result = await confirmTaxInvoiceMonthAction('SALES', effectiveSalesMonthFilter, visibleSalesRows)
+      if (result.error) return addError(result.error)
+      refreshConfirmedMonths('SALES')
+    })
+  }
+  function handleUnconfirmSalesMonth() {
+    if (effectiveSalesMonthFilter === 'all') return
+    startConfirming(async () => {
+      const result = await unconfirmTaxInvoiceMonthAction('SALES', effectiveSalesMonthFilter)
+      if (result.error) return addError(result.error)
+      refreshConfirmedMonths('SALES')
+    })
+  }
+  function handleConfirmPurchaseMonth() {
+    if (effectivePurchaseMonthFilter === 'all') return
+    startConfirming(async () => {
+      const result = await confirmTaxInvoiceMonthAction('PURCHASE', effectivePurchaseMonthFilter, visiblePurchaseRows)
+      if (result.error) return addError(result.error)
+      refreshConfirmedMonths('PURCHASE')
+    })
+  }
+  function handleUnconfirmPurchaseMonth() {
+    if (effectivePurchaseMonthFilter === 'all') return
+    startConfirming(async () => {
+      const result = await unconfirmTaxInvoiceMonthAction('PURCHASE', effectivePurchaseMonthFilter)
+      if (result.error) return addError(result.error)
+      refreshConfirmedMonths('PURCHASE')
+    })
+  }
+  function handleConfirmReceiptMonth() {
+    const group = receiptMonthGroups.find((g) => g.month === receiptConfirmMonth)
+    if (!group) return
+    startConfirming(async () => {
+      const result = await confirmReceiptCardMonthAction(receiptConfirmMonth, group.entries)
+      if (result.error) return addError(result.error)
+      refreshConfirmedMonths('RECEIPT')
+    })
+  }
+  function handleUnconfirmReceiptMonth() {
+    if (!receiptConfirmMonth) return
+    startConfirming(async () => {
+      const result = await unconfirmReceiptCardMonthAction(receiptConfirmMonth)
+      if (result.error) return addError(result.error)
+      refreshConfirmedMonths('RECEIPT')
+    })
+  }
+
   const counterpartyNames = useMemo(
     () => uniqueNonEmpty([...salesRows, ...purchaseRows].map((r) => r.counterpartyName)),
     [salesRows, purchaseRows],
@@ -255,30 +378,45 @@ export default function ReceiptsApp() {
   // 세금계산서 "전체 초기화" — 월 필터가 "전체"면 기존처럼 한 번만 확인하고 전부 지운다. 특정 월이
   // 선택되어 있으면 먼저 "이번 달만 지울지" 확인하고, 취소하면 "전체를 지울지" 다시 확인한다
   // (실수로 전체 누적 데이터가 한 번에 날아가는 것을 방지).
+  // 확정되어 잠긴 행(lockedGlobalIndices)은 항상 삭제 대상에서 제외한다.
   function handleClearAllTaxInvoice(
     draft: TaxInvoiceRow[] | null,
     monthFilter: string,
     setDraft: (rows: TaxInvoiceRow[]) => void,
+    lockedGlobalIndices: Set<number>,
   ) {
     const rows = draft ?? []
+    const allClearableCount = rows.length - lockedGlobalIndices.size
+
     if (monthFilter === 'all') {
-      if (rows.length === 0) return
-      if (window.confirm(`${rows.length}건의 데이터를 모두 초기화하시겠습니까? 되돌릴 수 없습니다.`)) {
-        setDraft([])
+      if (allClearableCount <= 0) {
+        if (rows.length > 0) addError('확정된 데이터는 삭제할 수 없습니다. 먼저 확정을 취소해주세요.')
+        return
+      }
+      const suffix = lockedGlobalIndices.size > 0 ? ` (확정된 ${lockedGlobalIndices.size}건은 제외됩니다.)` : ''
+      if (window.confirm(`${allClearableCount}건의 데이터를 모두 초기화하시겠습니까? 되돌릴 수 없습니다.${suffix}`)) {
+        setDraft(renumber(rows.filter((_, i) => lockedGlobalIndices.has(i))))
       }
       return
     }
 
-    const monthRows = rows.filter((r) => r.writtenDate.slice(0, 7) === monthFilter)
-    if (monthRows.length === 0) return
-    if (window.confirm(`선택한 ${monthFilter} 월 데이터 ${monthRows.length}건만 초기화하시겠습니까?`)) {
-      setDraft(renumber(rows.filter((r) => r.writtenDate.slice(0, 7) !== monthFilter)))
+    const monthIndices = rows.map((r, i) => (r.writtenDate.slice(0, 7) === monthFilter ? i : -1)).filter((i) => i >= 0)
+    const clearableMonthIndices = monthIndices.filter((i) => !lockedGlobalIndices.has(i))
+    if (clearableMonthIndices.length === 0) {
+      if (monthIndices.length > 0) addError('확정된 데이터는 삭제할 수 없습니다. 먼저 확정을 취소해주세요.')
       return
     }
+    if (window.confirm(`선택한 ${monthFilter} 월 데이터 ${clearableMonthIndices.length}건만 초기화하시겠습니까?`)) {
+      const toRemove = new Set(clearableMonthIndices)
+      setDraft(renumber(rows.filter((_, i) => !toRemove.has(i))))
+      return
+    }
+    if (allClearableCount <= 0) return
+    const suffix = lockedGlobalIndices.size > 0 ? ` (확정된 ${lockedGlobalIndices.size}건은 제외됩니다.)` : ''
     if (
-      window.confirm(`취소하셨습니다. 대신 전체 데이터(${rows.length}건)를 모두 초기화하시겠습니까? 되돌릴 수 없습니다.`)
+      window.confirm(`취소하셨습니다. 대신 전체 데이터(${allClearableCount}건)를 모두 초기화하시겠습니까? 되돌릴 수 없습니다.${suffix}`)
     ) {
-      setDraft([])
+      setDraft(renumber(rows.filter((_, i) => lockedGlobalIndices.has(i))))
     }
   }
 
@@ -485,8 +623,12 @@ export default function ReceiptsApp() {
         accountCodeMinWidth: 130,
         paymentBasisOptions: salesPaymentBasisOptions,
         direction: 'sales',
+        isRowLocked: (visibleIndex) => {
+          const globalIndex = salesGlobalIndices[visibleIndex]
+          return globalIndex !== undefined && lockedSalesGlobalIndices.has(globalIndex)
+        },
       }),
-    [accountRules, salesAccountCodes, salesPaymentBasisOptions, salesGlobalIndices],
+    [accountRules, salesAccountCodes, salesPaymentBasisOptions, salesGlobalIndices, lockedSalesGlobalIndices],
   )
   const purchaseColumns = useMemo(
     () =>
@@ -503,8 +645,12 @@ export default function ReceiptsApp() {
         accountCodeMinWidth: 130,
         paymentBasisOptions: purchasePaymentBasisOptions,
         direction: 'purchase',
+        isRowLocked: (visibleIndex) => {
+          const globalIndex = purchaseGlobalIndices[visibleIndex]
+          return globalIndex !== undefined && lockedPurchaseGlobalIndices.has(globalIndex)
+        },
       }),
-    [accountRules, purchaseAccountCodes, purchasePaymentBasisOptions, purchaseGlobalIndices],
+    [accountRules, purchaseAccountCodes, purchasePaymentBasisOptions, purchaseGlobalIndices, lockedPurchaseGlobalIndices],
   )
   const receiptCols = useMemo(
     () =>
@@ -521,8 +667,12 @@ export default function ReceiptsApp() {
         merchantNameListId: MERCHANT_LIST_ID,
         accountCodeOptions: receiptAccountCodes,
         detailOptions: receiptDetailOptions,
+        isRowLocked: (displayIndex) => {
+          const globalIndex = draftActiveCardSheet?.globalIndices[displayIndex]
+          return globalIndex !== undefined && lockedReceiptGlobalIndices.has(globalIndex)
+        },
       }),
-    [draftActiveCardSheet, receiptAccountCodes, receiptDetailOptions, accountRules],
+    [draftActiveCardSheet, receiptAccountCodes, receiptDetailOptions, accountRules, lockedReceiptGlobalIndices],
   )
 
   return (
@@ -641,7 +791,34 @@ export default function ReceiptsApp() {
             columns={salesColumns}
             rows={visibleSalesRows}
             searchPlaceholder="거래처명/품목명/계정과목 검색..."
-            toolbarExtra={<Button onClick={handleDownloadSales}>엑셀 다운</Button>}
+            toolbarExtra={
+              <>
+                <Button onClick={handleDownloadSales}>엑셀 다운</Button>
+                {effectiveSalesMonthFilter !== 'all' && (
+                  <>
+                    <span
+                      className={cn(
+                        'rounded-full border px-2 py-0.5 text-xs font-medium',
+                        salesConfirmedMonths.has(effectiveSalesMonthFilter)
+                          ? 'border-transparent bg-secondary text-secondary-foreground'
+                          : 'border-border text-muted-foreground',
+                      )}
+                    >
+                      {salesConfirmedMonths.has(effectiveSalesMonthFilter) ? '확정됨' : '작업중'}
+                    </span>
+                    {salesConfirmedMonths.has(effectiveSalesMonthFilter) ? (
+                      <Button variant="outline" disabled={isConfirming} onClick={handleUnconfirmSalesMonth}>
+                        <Unlock className="size-3.5" /> {isConfirming ? '처리 중...' : '확정 취소'}
+                      </Button>
+                    ) : (
+                      <Button disabled={isConfirming} onClick={handleConfirmSalesMonth}>
+                        <Lock className="size-3.5" /> {isConfirming ? '처리 중...' : '확정'}
+                      </Button>
+                    )}
+                  </>
+                )}
+              </>
+            }
             belowToolbar={
               <nav className="card-tabs">
                 <button
@@ -659,6 +836,7 @@ export default function ReceiptsApp() {
                     onClick={() => setSalesMonthFilter(g.month)}
                   >
                     {g.month}
+                    {salesConfirmedMonths.has(g.month) && ' 🔒'}
                   </button>
                 ))}
               </nav>
@@ -668,11 +846,17 @@ export default function ReceiptsApp() {
               if (index === undefined) return
               setSalesDraft((prev) => renumber((prev ?? []).filter((_, i) => i !== index)))
             }}
+            isRowDisabled={(visibleIndex) => {
+              const index = salesGlobalIndices[visibleIndex]
+              return index !== undefined && lockedSalesGlobalIndices.has(index)
+            }}
             onAddRow={() => {
               setSalesDraft((prev) => [...(prev ?? []), createBlankTaxInvoiceRow((prev ?? []).length + 1)])
               setSalesMonthFilter('all')
             }}
-            onClearAll={() => handleClearAllTaxInvoice(salesDraft, effectiveSalesMonthFilter, setSalesDraft)}
+            onClearAll={() =>
+              handleClearAllTaxInvoice(salesDraft, effectiveSalesMonthFilter, setSalesDraft, lockedSalesGlobalIndices)
+            }
             skipClearAllConfirm
             footerCells={taxInvoiceFooterCells}
           />
@@ -684,7 +868,34 @@ export default function ReceiptsApp() {
             columns={purchaseColumns}
             rows={visiblePurchaseRows}
             searchPlaceholder="거래처명/품목명/계정과목 검색..."
-            toolbarExtra={<Button onClick={handleDownloadPurchase}>엑셀 다운</Button>}
+            toolbarExtra={
+              <>
+                <Button onClick={handleDownloadPurchase}>엑셀 다운</Button>
+                {effectivePurchaseMonthFilter !== 'all' && (
+                  <>
+                    <span
+                      className={cn(
+                        'rounded-full border px-2 py-0.5 text-xs font-medium',
+                        purchaseConfirmedMonths.has(effectivePurchaseMonthFilter)
+                          ? 'border-transparent bg-secondary text-secondary-foreground'
+                          : 'border-border text-muted-foreground',
+                      )}
+                    >
+                      {purchaseConfirmedMonths.has(effectivePurchaseMonthFilter) ? '확정됨' : '작업중'}
+                    </span>
+                    {purchaseConfirmedMonths.has(effectivePurchaseMonthFilter) ? (
+                      <Button variant="outline" disabled={isConfirming} onClick={handleUnconfirmPurchaseMonth}>
+                        <Unlock className="size-3.5" /> {isConfirming ? '처리 중...' : '확정 취소'}
+                      </Button>
+                    ) : (
+                      <Button disabled={isConfirming} onClick={handleConfirmPurchaseMonth}>
+                        <Lock className="size-3.5" /> {isConfirming ? '처리 중...' : '확정'}
+                      </Button>
+                    )}
+                  </>
+                )}
+              </>
+            }
             belowToolbar={
               <nav className="card-tabs">
                 <button
@@ -702,6 +913,7 @@ export default function ReceiptsApp() {
                     onClick={() => setPurchaseMonthFilter(g.month)}
                   >
                     {g.month}
+                    {purchaseConfirmedMonths.has(g.month) && ' 🔒'}
                   </button>
                 ))}
               </nav>
@@ -711,11 +923,22 @@ export default function ReceiptsApp() {
               if (index === undefined) return
               setPurchaseDraft((prev) => renumber((prev ?? []).filter((_, i) => i !== index)))
             }}
+            isRowDisabled={(visibleIndex) => {
+              const index = purchaseGlobalIndices[visibleIndex]
+              return index !== undefined && lockedPurchaseGlobalIndices.has(index)
+            }}
             onAddRow={() => {
               setPurchaseDraft((prev) => [...(prev ?? []), createBlankTaxInvoiceRow((prev ?? []).length + 1)])
               setPurchaseMonthFilter('all')
             }}
-            onClearAll={() => handleClearAllTaxInvoice(purchaseDraft, effectivePurchaseMonthFilter, setPurchaseDraft)}
+            onClearAll={() =>
+              handleClearAllTaxInvoice(
+                purchaseDraft,
+                effectivePurchaseMonthFilter,
+                setPurchaseDraft,
+                lockedPurchaseGlobalIndices,
+              )
+            }
             skipClearAllConfirm
             footerCells={taxInvoiceFooterCells}
           />
@@ -754,6 +977,41 @@ export default function ReceiptsApp() {
                     e.target.value = ''
                   }}
                 />
+                {receiptMonthGroups.length > 0 && (
+                  <>
+                    <select
+                      className="rounded-md border border-input bg-transparent px-1.5 py-[2px] text-sm text-foreground"
+                      value={receiptConfirmMonth}
+                      onChange={(e) => setReceiptConfirmMonth(e.target.value)}
+                    >
+                      {receiptMonthGroups.map((g) => (
+                        <option key={g.month} value={g.month}>
+                          {g.month}
+                          {receiptConfirmedMonths.has(g.month) ? ' (확정됨)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <span
+                      className={cn(
+                        'rounded-full border px-2 py-0.5 text-xs font-medium',
+                        receiptConfirmedMonths.has(receiptConfirmMonth)
+                          ? 'border-transparent bg-secondary text-secondary-foreground'
+                          : 'border-border text-muted-foreground',
+                      )}
+                    >
+                      {receiptConfirmedMonths.has(receiptConfirmMonth) ? '확정됨' : '작업중'}
+                    </span>
+                    {receiptConfirmedMonths.has(receiptConfirmMonth) ? (
+                      <Button variant="outline" disabled={isConfirming} onClick={handleUnconfirmReceiptMonth}>
+                        <Unlock className="size-3.5" /> {isConfirming ? '처리 중...' : '확정 취소'}
+                      </Button>
+                    ) : (
+                      <Button disabled={isConfirming} onClick={handleConfirmReceiptMonth}>
+                        <Lock className="size-3.5" /> {isConfirming ? '처리 중...' : '확정'}
+                      </Button>
+                    )}
+                  </>
+                )}
               </>
             }
             belowToolbar={
@@ -775,6 +1033,10 @@ export default function ReceiptsApp() {
               if (globalIndex === undefined) return
               setReceiptDraft((prev) => (prev ?? []).filter((_, i) => i !== globalIndex))
             }}
+            isRowDisabled={(displayIndex) => {
+              const globalIndex = draftActiveCardSheet?.globalIndices[displayIndex]
+              return globalIndex !== undefined && lockedReceiptGlobalIndices.has(globalIndex)
+            }}
             onAddRow={() => {
               const last4 = draftActiveCardSheet?.last4
               if (!last4) return
@@ -783,7 +1045,9 @@ export default function ReceiptsApp() {
             }}
             onClearAll={() => {
               const globalIndices = new Set(draftActiveCardSheet?.globalIndices ?? [])
-              setReceiptDraft((prev) => (prev ?? []).filter((_, i) => !globalIndices.has(i)))
+              setReceiptDraft((prev) =>
+                (prev ?? []).filter((_, i) => !globalIndices.has(i) || lockedReceiptGlobalIndices.has(i)),
+              )
             }}
           />
         </Modal>

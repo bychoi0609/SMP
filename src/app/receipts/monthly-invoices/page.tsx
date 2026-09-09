@@ -1,5 +1,10 @@
-import { MonthlyInvoicesClient } from "./monthly-invoices-client"
+import MonthlyInvoicesView from "@/features/receipts/MonthlyInvoicesView"
+import { getConfirmedTaxInvoiceRowsAction } from "@/app/receipts/actions"
 
-export default function MonthlyInvoicesPage() {
-  return <MonthlyInvoicesClient />
+export default async function MonthlyInvoicesPage() {
+  const [salesRows, purchaseRows] = await Promise.all([
+    getConfirmedTaxInvoiceRowsAction("SALES"),
+    getConfirmedTaxInvoiceRowsAction("PURCHASE"),
+  ])
+  return <MonthlyInvoicesView initialSalesRows={salesRows} initialPurchaseRows={purchaseRows} />
 }
