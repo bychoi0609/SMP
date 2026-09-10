@@ -323,6 +323,15 @@
     top: 0;
   }
 
+  tfoot td {
+    background: var(--rc-code-bg);
+    color: var(--rc-accent);
+    font-weight: 700;
+    border-top: 2px solid var(--rc-accent);
+    position: sticky;
+    bottom: 0;
+  }
+
   .table-empty {
     color: var(--rc-text);
     padding: 24px 0;

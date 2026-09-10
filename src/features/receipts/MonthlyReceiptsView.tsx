@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import './receipts.css'
 import { Table } from './components/Table'
 import type { Column } from './components/Table'
@@ -135,16 +136,19 @@ export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsV
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">검색 조건</span>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as SearchCategory)}
-            className="rounded-md border border-input bg-transparent px-2 py-1"
-          >
-            <option value="all">전체</option>
-            <option value="last4">카드번호</option>
-            <option value="detail">세부내역</option>
-            <option value="accountCode">계정과목</option>
-          </select>
+          <div className="relative">
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as SearchCategory)}
+              className="w-32 appearance-none rounded-md border border-input bg-transparent py-1 pl-3 pr-8"
+            >
+              <option value="all">전체</option>
+              <option value="last4">카드번호</option>
+              <option value="detail">세부내역</option>
+              <option value="accountCode">계정과목</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          </div>
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">검색어</span>
@@ -152,11 +156,22 @@ export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsV
             type="text"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            placeholder="검색어 입력..."
+            placeholder="검색어 입력"
             className="rounded-md border border-input bg-transparent px-2 py-1"
           />
         </label>
-        <Button onClick={handleSearch}>조회</Button>
+        <div className="flex flex-col gap-1 ml-auto mr-4">
+          <span className="text-xs text-transparent select-none">조회</span>
+          <Button onClick={handleSearch} className="px-4 py-1">
+            조회
+          </Button>
+        </div>
+        <div className="flex flex-col gap-1 -ml-4 mr-2">
+          <span className="text-xs text-transparent select-none">다운로드</span>
+          <Button onClick={handleDownload} className="px-4 py-1">
+            엑셀 다운(전체)
+          </Button>
+        </div>
       </div>
 
       <Table
@@ -166,7 +181,6 @@ export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsV
         emptyMessage={
           hasSearched ? '조회 결과가 없습니다.' : '기간과 조건을 설정한 후 조회 버튼을 눌러주세요.'
         }
-        toolbarExtra={<Button onClick={handleDownload}>엑셀 다운(전체)</Button>}
         footerCells={receiptFooterCells}
       />
     </div>
