@@ -3,13 +3,15 @@
 import { useMemo, useState } from 'react'
 import './receipts.css'
 import { Table } from './components/Table'
+import type { Column } from './components/Table'
 import { createReceiptColumns } from './components/receiptColumns'
 import { groupReceiptsByCard } from './lib/parseReceipt'
 import { usePersistentState } from './lib/storage'
 import { downloadReceiptWorkbook } from './lib/exportWorkbook'
 import { receiptFooterCells } from './lib/footerCells'
-import { DEFAULT_CARD_MASTER } from './data/cardMaster'
+import { DEFAULT_CARD_MASTER, cardSheetName } from './data/cardMaster'
 import type { CardMasterEntry } from './data/cardMaster'
+import type { ReceiptRow } from './types/tables'
 import { Button } from './components/ui/button'
 import type { ReceiptCardRowDTO } from '@/app/receipts/actions'
 
@@ -17,7 +19,17 @@ interface MonthlyReceiptsViewProps {
   initialEntries: ReceiptCardRowDTO[]
 }
 
-// 정리 화면에서 확정된(DB에 저장된) 영수증 데이터를 기간(귀속월 범위)으로 조회하는 화면. 카드별
+type SearchCategory = 'all' | 'last4' | 'detail' | 'accountCode'
+
+// 표에 보여줄 행: 원본 영수증 행에 카드 정보(카드번호/닉네임)를 합친 것.
+type ReceiptRowView = ReceiptRow & { last4: string; cardLabel: string }
+
+function cardLabelFor(last4: string, cardMaster: CardMasterEntry[]): string {
+  const entry = cardMaster.find((e) => e.last4 === last4)
+  return entry ? cardSheetName(entry) : last4
+}
+
+// 정리 화면에서 확정된(DB에 저장된) 영수증 데이터를 기간(귀속월 범위)+조건으로 조회하는 화면. 카드별
 // 구분 없이 모든 카드의 영수증을 함께 보여준다. 편집은 /receipts의 영수증 모달에서만 한다.
 export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsViewProps) {
   // 카드 닉네임(카드 마스터)은 여전히 이 브라우저의 localStorage에서 관리한다(별도 범위).
@@ -25,25 +37,63 @@ export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsV
 
   const [startMonth, setStartMonth] = useState('')
   const [endMonth, setEndMonth] = useState('')
+  const [category, setCategory] = useState<SearchCategory>('all')
+  const [searchText, setSearchText] = useState('')
+
+  // 조회 버튼을 눌러야만 반영되는 확정 조건 — 처음 화면 진입 시에는 아무 조건도 적용되지 않은
+  // 상태(hasSearched === false)라 표를 비워둔다.
+  const [hasSearched, setHasSearched] = useState(false)
   const [appliedRange, setAppliedRange] = useState<{ start: string; end: string }>({ start: '', end: '' })
+  const [appliedSearch, setAppliedSearch] = useState<{ category: SearchCategory; text: string }>({
+    category: 'all',
+    text: '',
+  })
 
-  const filteredRows = useMemo(
-    () =>
-      initialEntries
-        .filter((e) => {
-          const month = e.row.date.slice(0, 7)
-          if (appliedRange.start && month < appliedRange.start) return false
-          if (appliedRange.end && month > appliedRange.end) return false
-          return true
-        })
-        .map((e) => e.row),
-    [initialEntries, appliedRange],
-  )
+  const filteredRows = useMemo<ReceiptRowView[]>(() => {
+    if (!hasSearched) return []
 
-  const columns = useMemo(() => createReceiptColumns({ readOnly: true }), [])
+    const q = appliedSearch.text.trim().toLowerCase()
+
+    return initialEntries
+      .filter((e) => {
+        const month = e.row.date.slice(0, 7)
+        if (appliedRange.start && month < appliedRange.start) return false
+        if (appliedRange.end && month > appliedRange.end) return false
+        return true
+      })
+      .filter((e) => {
+        if (!q) return true
+        const label = cardLabelFor(e.last4, cardMaster).toLowerCase()
+        const matchesCard = e.last4.toLowerCase().includes(q) || label.includes(q)
+        const matchesDetail = e.row.detail.toLowerCase().includes(q)
+        const matchesAccountCode = e.row.accountCode.toLowerCase().includes(q)
+        if (appliedSearch.category === 'last4') return matchesCard
+        if (appliedSearch.category === 'detail') return matchesDetail
+        if (appliedSearch.category === 'accountCode') return matchesAccountCode
+        return matchesCard || matchesDetail || matchesAccountCode
+      })
+      .map((e) => ({ ...e.row, last4: e.last4, cardLabel: cardLabelFor(e.last4, cardMaster) }))
+  }, [initialEntries, hasSearched, appliedRange, appliedSearch, cardMaster])
+
+  const columns = useMemo<Column<ReceiptRowView>[]>(() => {
+    const base = createReceiptColumns({ readOnly: true })
+    const cardColumn: Column<ReceiptRowView> = {
+      key: 'cardLabel',
+      label: '카드번호',
+      align: 'center',
+      minWidth: 110,
+      render: (r) => r.cardLabel,
+    }
+    const dateIndex = base.findIndex((c) => c.key === 'date')
+    const merged: Column<ReceiptRowView>[] = [...base]
+    merged.splice(dateIndex + 1, 0, cardColumn)
+    return merged
+  }, [])
 
   function handleSearch() {
     setAppliedRange({ start: startMonth, end: endMonth })
+    setAppliedSearch({ category, text: searchText })
+    setHasSearched(true)
   }
 
   function handleDownload() {
@@ -58,7 +108,7 @@ export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsV
       <div className="mb-6">
         <h1 className="text-xl font-semibold">월별 영수증 데이터</h1>
         <p className="text-sm text-muted-foreground">
-          정리 화면에서 확정된 영수증 데이터를 기간별로 조회합니다(조회 전용). 카드별 구분 없이 모든 카드의
+          정리 화면에서 확정된 영수증 데이터를 기간·조건별로 조회합니다(조회 전용). 카드별 구분 없이 모든 카드의
           영수증을 함께 보여줍니다.
         </p>
       </div>
@@ -83,13 +133,39 @@ export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsV
             className="rounded-md border border-input bg-transparent px-2 py-1"
           />
         </label>
-        <Button onClick={handleSearch}>검색</Button>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">검색 조건</span>
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value as SearchCategory)}
+            className="rounded-md border border-input bg-transparent px-2 py-1"
+          >
+            <option value="all">전체</option>
+            <option value="last4">카드번호</option>
+            <option value="detail">세부내역</option>
+            <option value="accountCode">계정과목</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">검색어</span>
+          <input
+            type="text"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="검색어 입력..."
+            className="rounded-md border border-input bg-transparent px-2 py-1"
+          />
+        </label>
+        <Button onClick={handleSearch}>조회</Button>
       </div>
 
       <Table
         columns={columns}
         rows={filteredRows}
-        searchPlaceholder="거래처명/현장명/계정과목 검색..."
+        hideSearch
+        emptyMessage={
+          hasSearched ? '조회 결과가 없습니다.' : '기간과 조건을 설정한 후 조회 버튼을 눌러주세요.'
+        }
         toolbarExtra={<Button onClick={handleDownload}>엑셀 다운(전체)</Button>}
         footerCells={receiptFooterCells}
       />
