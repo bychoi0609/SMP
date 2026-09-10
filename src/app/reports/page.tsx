@@ -3,6 +3,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -198,6 +199,8 @@ export default async function ReportsPage({
                       </TableCell>
                     </TableRow>
                   ))}
+                </TableBody>
+                <TableFooter>
                   <TableRow className="bg-muted/50 font-semibold">
                     <TableCell>전체 합계</TableCell>
                     <TableCell className="tabular-nums">
@@ -217,7 +220,7 @@ export default async function ReportsPage({
                     </TableCell>
                     <TableCell />
                   </TableRow>
-                </TableBody>
+                </TableFooter>
               </Table>
             </div>
           </div>
