@@ -11,7 +11,7 @@ import type { TaxInvoiceRowDTO } from '@/app/receipts/actions'
 import { Button } from './components/ui/button'
 
 type Direction = 'sales' | 'purchase'
-type SearchCategory = 'all' | 'counterpartyName' | 'itemName' | 'accountCode'
+type SearchCategory = 'all' | 'counterpartyName' | 'itemName' | 'accountCode' | 'detail'
 
 interface MonthlyInvoicesViewProps {
   initialSalesRows: TaxInvoiceRowDTO[]
@@ -50,10 +50,12 @@ export default function MonthlyInvoicesView({ initialSalesRows, initialPurchaseR
         const matchesCounterparty = r.counterpartyName.toLowerCase().includes(q)
         const matchesItem = r.itemName.toLowerCase().includes(q)
         const matchesAccountCode = r.accountCode.toLowerCase().includes(q)
+        const matchesDetail = r.detail.toLowerCase().includes(q)
         if (appliedSearch.category === 'counterpartyName') return matchesCounterparty
         if (appliedSearch.category === 'itemName') return matchesItem
         if (appliedSearch.category === 'accountCode') return matchesAccountCode
-        return matchesCounterparty || matchesItem || matchesAccountCode
+        if (appliedSearch.category === 'detail') return matchesDetail
+        return matchesCounterparty || matchesItem || matchesAccountCode || matchesDetail
       })
       .map((r, i) => ({ ...r, no: i + 1 }))
   }, [rows, appliedRange, appliedSearch])
@@ -126,6 +128,7 @@ export default function MonthlyInvoicesView({ initialSalesRows, initialPurchaseR
               <option value="counterpartyName">거래처명</option>
               <option value="itemName">품목명</option>
               <option value="accountCode">계정과목</option>
+              <option value="detail">세부내역</option>
             </select>
             <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           </div>
