@@ -201,7 +201,7 @@ export default async function ReportsPage({
                   ))}
                 </TableBody>
                 <TableFooter>
-                  <TableRow className="bg-muted/50 font-semibold">
+                  <TableRow className="bg-muted font-semibold">
                     <TableCell>전체 합계</TableCell>
                     <TableCell className="tabular-nums">
                       {total.plantCount}

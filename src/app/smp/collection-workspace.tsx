@@ -468,18 +468,18 @@ export function CollectionWorkspace({
             <tfoot className="sticky bottom-0 z-10">
               <tr>
                 <td
-                  className={cn(tdCell, "bg-muted/60 font-semibold")}
+                  className={cn(tdCell, "bg-muted font-semibold")}
                   colSpan={2}
                 >
                   합 계
                 </td>
-                <td className={cn(tdCell, "bg-muted/60 font-semibold")}>
+                <td className={cn(tdCell, "bg-muted font-semibold")}>
                   {formatNumber(totalCapacity, 2)}
                 </td>
-                <td className={cn(tdCell, "bg-muted/60 font-semibold")}>
+                <td className={cn(tdCell, "bg-muted font-semibold")}>
                   {formatAmount(totals.generationKwh)}
                 </td>
-                <td className={cn(tdCell, "bg-muted/60 font-semibold")}>
+                <td className={cn(tdCell, "bg-muted font-semibold")}>
                   {totalCapacity
                     ? formatNumber(
                         totals.generationKwh / totalCapacity / daysInMonth(month),
@@ -487,12 +487,12 @@ export function CollectionWorkspace({
                       )
                     : "-"}
                 </td>
-                <td className={cn(tdCell, "bg-muted/60 font-semibold")}>
+                <td className={cn(tdCell, "bg-muted font-semibold")}>
                   {averageIrradiance !== null
                     ? formatNumber(averageIrradiance, 0)
                     : "-"}
                 </td>
-                <td className={cn(tdCell, "bg-muted/60 font-semibold")}>
+                <td className={cn(tdCell, "bg-muted font-semibold")}>
                   {totals.generationKwh
                     ? formatNumber(
                         totals.supplyAmount / totals.generationKwh,
@@ -500,17 +500,17 @@ export function CollectionWorkspace({
                       )
                     : "-"}
                 </td>
-                <td className={cn(tdCell, "bg-muted/60 font-semibold")}>
+                <td className={cn(tdCell, "bg-muted font-semibold")}>
                   {formatAmount(totals.supplyAmount)}
                 </td>
-                <td className={cn(tdCell, "bg-muted/60 font-semibold")}>
+                <td className={cn(tdCell, "bg-muted font-semibold")}>
                   {formatAmount(totals.recQuantity)}
                 </td>
-                <td className={cn(tdCell, "bg-muted/60 font-semibold")}>-</td>
-                <td className={cn(tdCell, "bg-muted/60 font-semibold")}>
+                <td className={cn(tdCell, "bg-muted font-semibold")}>-</td>
+                <td className={cn(tdCell, "bg-muted font-semibold")}>
                   {formatAmount(totals.recAmount)}
                 </td>
-                <td className={cn(tdCell, "bg-muted/60 font-semibold")}>
+                <td className={cn(tdCell, "bg-muted font-semibold")}>
                   {formatAmount(totals.supplyAmount + totals.recAmount)}
                 </td>
               </tr>
