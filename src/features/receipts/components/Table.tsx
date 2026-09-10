@@ -32,6 +32,8 @@ interface TableProps<T> {
   // true면 onClearAll을 확인창 없이 바로 호출한다 (호출자가 직접 확인 절차를 처리하는 경우, 예: 월별 필터).
   skipClearAllConfirm?: boolean
   searchPlaceholder?: string
+  // true면 표 자체의 검색창/카테고리 드롭다운을 숨긴다(호출자가 상단에 별도 검색 UI를 두는 경우, 예: 월별 조회 화면).
+  hideSearch?: boolean
   // 전체 초기화/행 추가 버튼 옆에 붙는 추가 버튼(예: 엑셀 다운로드) — 같은 툴바 줄에서 간격을 좁게 유지한다.
   toolbarExtra?: ReactNode
   // 툴바(검색/행 추가 등)와 표 본문 사이에 끼워 넣을 내용 (예: 영수증 카드 선택 탭).
@@ -54,6 +56,7 @@ export function Table<T>({
   clearAllLabel = '전체 초기화',
   skipClearAllConfirm = false,
   searchPlaceholder = '검색...',
+  hideSearch = false,
   toolbarExtra,
   belowToolbar,
   footerCells,
@@ -122,29 +125,31 @@ export function Table<T>({
   return (
     <div className="data-table">
       <div className="data-table__toolbar">
-        <div className="data-table__search-group">
-          {searchableColumns.length > 1 && (
-            <select
-              className="rounded-md border border-input bg-transparent text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-table__search-category"
-              value={searchCategory}
-              onChange={(e) => setSearchCategory(e.target.value)}
-            >
-              <option value="all">전체</option>
-              {searchableColumns.map((c) => (
-                <option key={c.key} value={c.key}>
-                  {c.searchLabel ?? c.key}
-                </option>
-              ))}
-            </select>
-          )}
-          <Input
-            type="search"
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            placeholder={searchPlaceholderText}
-            className="data-table__search"
-          />
-        </div>
+        {!hideSearch && (
+          <div className="data-table__search-group">
+            {searchableColumns.length > 1 && (
+              <select
+                className="rounded-md border border-input bg-transparent text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-table__search-category"
+                value={searchCategory}
+                onChange={(e) => setSearchCategory(e.target.value)}
+              >
+                <option value="all">전체</option>
+                {searchableColumns.map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.searchLabel ?? c.key}
+                  </option>
+                ))}
+              </select>
+            )}
+            <Input
+              type="search"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder={searchPlaceholderText}
+              className="data-table__search"
+            />
+          </div>
+        )}
         <div className="data-table__toolbar-actions">
           {onClearAll && (
             <Button disabled={rows.length === 0} onClick={handleClearAll}>
