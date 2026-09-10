@@ -867,7 +867,7 @@ export default function ReceiptsApp() {
           <Table
             columns={purchaseColumns}
             rows={visiblePurchaseRows}
-            searchPlaceholder="거래처명/품목명/계정과목 검색..."
+            searchPlaceholder="거래처명/품목명/계정과목/세부내역 검색..."
             toolbarExtra={
               <>
                 <Button onClick={handleDownloadPurchase}>엑셀 다운</Button>

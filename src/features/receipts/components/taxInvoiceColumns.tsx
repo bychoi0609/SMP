@@ -262,6 +262,8 @@ export function createTaxInvoiceColumns({
         ) : (
           <TextCell value={r.detail} onChange={(v) => onChange!(i, { detail: v })} align="center" />
         ),
+      searchValue: (r) => r.detail,
+      searchLabel: '세부내역',
     },
   ]
 
