@@ -82,7 +82,7 @@ export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsV
       key: 'cardLabel',
       label: '카드번호',
       align: 'center',
-      minWidth: 110,
+      width: 110,
       render: (r) => r.cardLabel,
     }
     const dateIndex = base.findIndex((c) => c.key === 'date')

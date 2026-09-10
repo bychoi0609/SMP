@@ -10,7 +10,13 @@ import {
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 
-const SECTIONS = [
+const SOLAR_SECTIONS = [
+  {
+    href: "/plants",
+    title: "발전소관리",
+    description: "발전소 계약번호·종사업장번호·별칭 등 마스터 정보를 관리합니다.",
+    ready: true,
+  },
   {
     href: "/smp",
     title: "SMP",
@@ -31,19 +37,40 @@ const SECTIONS = [
   },
 ]
 
-export default function DashboardPage() {
-  return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-xl font-semibold">메인</h1>
-      </div>
+const RECEIPTS_SECTIONS = [
+  {
+    href: "/receipts",
+    title: "영수증/세금계산서 정리",
+    description: "귀속월 단위로 영수증·세금계산서 데이터를 검토하고 확정합니다.",
+    ready: true,
+  },
+  {
+    href: "/receipts/monthly-receipts",
+    title: "월별 영수증 데이터",
+    description: "확정된 영수증 데이터를 카드번호·세부내역·계정과목별로 조회합니다.",
+    ready: true,
+  },
+  {
+    href: "/receipts/monthly-invoices",
+    title: "월별 세금계산서 데이터",
+    description: "확정된 매출·매입 세금계산서 데이터를 월별로 조회합니다.",
+    ready: true,
+  },
+]
 
-      <div className="flex justify-center gap-4">
-        {SECTIONS.map((section) => (
-          <Card
-            key={section.href}
-            className="min-h-48 w-72 justify-center"
-          >
+function SectionGroup({
+  title,
+  sections,
+}: {
+  title: string
+  sections: typeof SOLAR_SECTIONS
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <h2 className="text-sm font-medium text-muted-foreground">{title}</h2>
+      <div className="flex flex-wrap justify-center gap-4">
+        {sections.map((section) => (
+          <Card key={section.href} className="min-h-48 w-72 justify-center">
             <CardHeader>
               <CardTitle>{section.title}</CardTitle>
               <CardDescription>{section.description}</CardDescription>
@@ -62,6 +89,19 @@ export default function DashboardPage() {
           </Card>
         ))}
       </div>
+    </div>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <div className="flex flex-col gap-10">
+      <div>
+        <h1 className="text-xl font-semibold">메인</h1>
+      </div>
+
+      <SectionGroup title="영수증/세금계산서" sections={RECEIPTS_SECTIONS} />
+      <SectionGroup title="태양광" sections={SOLAR_SECTIONS} />
     </div>
   )
 }

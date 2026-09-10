@@ -7,7 +7,7 @@ interface TaxInvoiceColumnOptions {
   onChange?: (rowIndex: number, patch: Partial<TaxInvoiceRow>) => void
   counterpartyNameListId?: string
   accountCodeOptions?: string[]
-  accountCodeMinWidth?: number
+  accountCodeWidth?: number
   paymentBasisOptions?: string[]
   direction: TaxInvoiceDirection
   // true면 셀을 입력창이 아닌 텍스트로만 보여준다("월별 세금계산서 데이터" 보기 화면 전용).
@@ -34,18 +34,19 @@ export function createTaxInvoiceColumns({
   onChange,
   counterpartyNameListId,
   accountCodeOptions = [],
-  accountCodeMinWidth = 110,
+  accountCodeWidth = 110,
   paymentBasisOptions = [],
   direction,
   readOnly = false,
   isRowLocked,
 }: TaxInvoiceColumnOptions): Column<TaxInvoiceRow>[] {
   const columns: Column<TaxInvoiceRow>[] = [
-    { key: 'no', label: '번호', align: 'center', render: (r) => r.no, sortValue: (r) => r.no },
+    { key: 'no', label: '번호', align: 'center', width: 56, render: (r) => r.no, sortValue: (r) => r.no },
     {
       key: 'writtenDate',
       label: '작성일자',
       align: 'center',
+      width: 104,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           r.writtenDate
@@ -64,7 +65,7 @@ export function createTaxInvoiceColumns({
         </>
       ),
       align: 'center',
-      minWidth: 120,
+      width: 130,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           r.counterpartyBizNo
@@ -79,7 +80,7 @@ export function createTaxInvoiceColumns({
     {
       key: 'counterpartyName',
       label: '상호',
-      minWidth: 180,
+      width: 180,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           r.counterpartyName
@@ -98,7 +99,7 @@ export function createTaxInvoiceColumns({
       key: 'totalAmount',
       label: '합계금액',
       align: 'center',
-      minWidth: 110,
+      width: 110,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           formatNumber(r.totalAmount)
@@ -111,7 +112,7 @@ export function createTaxInvoiceColumns({
       key: 'supplyAmount',
       label: '공급가액',
       align: 'center',
-      minWidth: 110,
+      width: 110,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           formatNumber(r.supplyAmount)
@@ -123,7 +124,7 @@ export function createTaxInvoiceColumns({
       key: 'taxAmount',
       label: '세액',
       align: 'center',
-      minWidth: 100,
+      width: 100,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           formatNumber(r.taxAmount)
@@ -134,7 +135,7 @@ export function createTaxInvoiceColumns({
     {
       key: 'itemName',
       label: '품목명',
-      minWidth: 180,
+      width: 180,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? r.itemName : <TextCell value={r.itemName} onChange={(v) => onChange!(i, { itemName: v })} />,
       searchValue: (r) => r.itemName,
@@ -143,7 +144,7 @@ export function createTaxInvoiceColumns({
     {
       key: 'issueType',
       label: '유형1',
-      minWidth: 85,
+      width: 85,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           r.issueType
@@ -158,7 +159,7 @@ export function createTaxInvoiceColumns({
     {
       key: 'taxType',
       label: '유형2',
-      minWidth: 85,
+      width: 85,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           r.taxType
@@ -173,7 +174,7 @@ export function createTaxInvoiceColumns({
     {
       key: 'accountCode',
       label: '계정과목',
-      minWidth: accountCodeMinWidth,
+      width: accountCodeWidth,
       align: 'center',
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
@@ -193,6 +194,7 @@ export function createTaxInvoiceColumns({
       key: 'siteCode',
       label: '구분번호',
       align: 'center',
+      width: 90,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           (r.siteCode ?? '')
@@ -203,7 +205,7 @@ export function createTaxInvoiceColumns({
     {
       key: 'paymentBasisAccount',
       label: '대금기준',
-      minWidth: 120,
+      width: 120,
       align: 'center',
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
@@ -220,6 +222,7 @@ export function createTaxInvoiceColumns({
     {
       key: 'paymentDate',
       label: '결제일',
+      width: 104,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           r.paymentDate
@@ -237,12 +240,14 @@ export function createTaxInvoiceColumns({
     {
       key: 'note',
       label: '비고',
+      width: 140,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? r.note : <TextCell value={r.note} onChange={(v) => onChange!(i, { note: v })} />,
     },
     {
       key: 'project',
       label: '프로젝트',
+      width: 110,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? r.project : <TextCell value={r.project} onChange={(v) => onChange!(i, { project: v })} />,
     },
@@ -250,6 +255,7 @@ export function createTaxInvoiceColumns({
       key: 'detail',
       label: '세부내역',
       align: 'center',
+      width: 130,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           r.detail

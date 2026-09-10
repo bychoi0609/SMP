@@ -28,6 +28,7 @@ export function createReceiptColumns({
     {
       key: 'date',
       label: '날짜',
+      width: 104,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? r.date : <DateCell value={r.date} onChange={(v) => onChange!(i, { date: v })} />,
       sortValue: (r) => r.date,
@@ -35,7 +36,7 @@ export function createReceiptColumns({
     {
       key: 'merchantName',
       label: '거래처명',
-      minWidth: 150,
+      width: 150,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           r.merchantName
@@ -54,7 +55,7 @@ export function createReceiptColumns({
       key: 'supplyAmount',
       label: '공급가액',
       align: 'center',
-      minWidth: 100,
+      width: 100,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           formatNumber(r.supplyAmount)
@@ -66,7 +67,7 @@ export function createReceiptColumns({
       key: 'taxAmount',
       label: '세액',
       align: 'center',
-      minWidth: 90,
+      width: 90,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           formatNumber(r.taxAmount)
@@ -78,7 +79,7 @@ export function createReceiptColumns({
       key: 'totalAmount',
       label: '합계',
       align: 'center',
-      minWidth: 100,
+      width: 100,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           formatNumber(r.totalAmount)
@@ -91,7 +92,7 @@ export function createReceiptColumns({
       key: 'siteName',
       label: '현장명',
       align: 'center',
-      minWidth: 90,
+      width: 90,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           r.siteName
@@ -105,7 +106,7 @@ export function createReceiptColumns({
       key: 'description',
       label: '내역',
       align: 'center',
-      minWidth: 90,
+      width: 110,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           r.description
@@ -117,7 +118,7 @@ export function createReceiptColumns({
       key: 'accountCode',
       label: '계정과목',
       align: 'center',
-      minWidth: 110,
+      width: 110,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           r.accountCode
@@ -136,7 +137,7 @@ export function createReceiptColumns({
       key: 'siteCode',
       label: '구분',
       align: 'center',
-      minWidth: 40,
+      width: 70,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           (r.siteCode ?? '')
@@ -148,6 +149,7 @@ export function createReceiptColumns({
       key: 'taxType',
       label: '과세유형',
       align: 'center',
+      width: 85,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           r.taxType
@@ -159,6 +161,7 @@ export function createReceiptColumns({
       key: 'detail',
       label: '세부내역',
       align: 'center',
+      width: 130,
       render: (r, i) =>
         readOnly || isRowLocked?.(i) ? (
           r.detail

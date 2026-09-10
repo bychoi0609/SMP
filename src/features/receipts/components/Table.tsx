@@ -8,8 +8,8 @@ export interface Column<T> {
   key: string
   label: ReactNode
   align?: 'left' | 'center' | 'right'
-  // 값이 잘려 보이는 컬럼(상호, 합계금액 등)에 지정해 입력창이 값을 다 보여줄 만큼 넓어지도록 한다.
-  minWidth?: number
+  // 컬럼의 고정 픽셀폭(태양광 표처럼 내용 길이와 무관하게 셀 폭을 고정한다).
+  width?: number
   render: (row: T, rowIndex: number) => ReactNode
   // 정렬/검색 대상 컬럼이면 지정. 원본 데이터(row)를 기준으로 값을 뽑아온다.
   sortValue?: (row: T) => string | number
@@ -44,6 +44,10 @@ interface TableProps<T> {
 
 type SortDir = 'asc' | 'desc'
 
+// width가 지정되지 않은 컬럼(마이그레이션 누락 등)에 적용할 기본 폭.
+const DEFAULT_COLUMN_WIDTH = 120
+const DELETE_COLUMN_WIDTH = 72
+
 export function Table<T>({
   columns,
   rows,
@@ -64,6 +68,15 @@ export function Table<T>({
   const [searchText, setSearchText] = useState('')
   const [searchCategory, setSearchCategory] = useState('all')
   const [sort, setSort] = useState<{ key: string; dir: SortDir } | null>(null)
+
+  // 태양광 표처럼 컬럼별 고정폭 합계로 표 전체의 최소 폭을 잡아, 화면이 좁을 때만
+  // 가로 스크롤이 생기고 그 외엔 각 셀 폭이 내용 길이에 흔들리지 않도록 한다.
+  const tableMinWidth = useMemo(
+    () =>
+      columns.reduce((sum, c) => sum + (c.width ?? DEFAULT_COLUMN_WIDTH), 0) +
+      (onDeleteRow ? DELETE_COLUMN_WIDTH : 0),
+    [columns, onDeleteRow],
+  )
 
   const searchableColumns = useMemo(() => columns.filter((c) => c.searchValue), [columns])
   const activeSearchColumns = useMemo(
@@ -167,7 +180,7 @@ export function Table<T>({
         <p className="table-empty">{emptyMessage}</p>
       ) : (
         <div className="table-scroll">
-          <table>
+          <table style={{ minWidth: tableMinWidth }}>
             <thead>
               <tr>
                 {columns.map((col) => {
@@ -175,7 +188,7 @@ export function Table<T>({
                   return (
                     <th
                       key={col.key}
-                      style={{ textAlign: 'center', minWidth: col.minWidth }}
+                      style={{ textAlign: 'center', width: col.width ?? DEFAULT_COLUMN_WIDTH }}
                       className={col.sortValue ? 'sortable' : undefined}
                       onClick={() => toggleSort(col)}
                     >
@@ -184,7 +197,7 @@ export function Table<T>({
                     </th>
                   )
                 })}
-                {onDeleteRow && <th aria-label="행 삭제" />}
+                {onDeleteRow && <th aria-label="행 삭제" style={{ width: DELETE_COLUMN_WIDTH }} />}
               </tr>
             </thead>
             <tbody
@@ -203,12 +216,15 @@ export function Table<T>({
               {viewIndices.map((rowIndex) => (
                 <tr key={rowIndex}>
                   {columns.map((col) => (
-                    <td key={col.key} style={{ textAlign: col.align ?? 'left', minWidth: col.minWidth }}>
+                    <td
+                      key={col.key}
+                      style={{ textAlign: col.align ?? 'left', width: col.width ?? DEFAULT_COLUMN_WIDTH }}
+                    >
                       {col.render(rows[rowIndex], rowIndex)}
                     </td>
                   ))}
                   {onDeleteRow && (
-                    <td>
+                    <td style={{ width: DELETE_COLUMN_WIDTH }}>
                       <Button
                         variant="destructive"
                         size="xs"
@@ -229,12 +245,15 @@ export function Table<T>({
                   {(() => {
                     const cells = footerCells(rows)
                     return columns.map((col) => (
-                      <td key={col.key} style={{ textAlign: col.align ?? 'left', minWidth: col.minWidth }}>
+                      <td
+                        key={col.key}
+                        style={{ textAlign: col.align ?? 'left', width: col.width ?? DEFAULT_COLUMN_WIDTH }}
+                      >
                         {cells[col.key] ?? ''}
                       </td>
                     ))
                   })()}
-                  {onDeleteRow && <td />}
+                  {onDeleteRow && <td style={{ width: DELETE_COLUMN_WIDTH }} />}
                 </tr>
               </tfoot>
             )}

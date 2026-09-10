@@ -620,7 +620,7 @@ export default function ReceiptsApp() {
         },
         counterpartyNameListId: COUNTERPARTY_LIST_ID,
         accountCodeOptions: salesAccountCodes,
-        accountCodeMinWidth: 130,
+        accountCodeWidth: 130,
         paymentBasisOptions: salesPaymentBasisOptions,
         direction: 'sales',
         isRowLocked: (visibleIndex) => {
@@ -642,7 +642,7 @@ export default function ReceiptsApp() {
         },
         counterpartyNameListId: COUNTERPARTY_LIST_ID,
         accountCodeOptions: purchaseAccountCodes,
-        accountCodeMinWidth: 130,
+        accountCodeWidth: 130,
         paymentBasisOptions: purchasePaymentBasisOptions,
         direction: 'purchase',
         isRowLocked: (visibleIndex) => {
