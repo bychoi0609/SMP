@@ -465,7 +465,7 @@ export function CollectionWorkspace({
             })}
           </tbody>
           {plants.length > 0 && (
-            <tfoot>
+            <tfoot className="sticky bottom-0 z-10">
               <tr>
                 <td
                   className={cn(tdCell, "bg-muted/60 font-semibold")}
