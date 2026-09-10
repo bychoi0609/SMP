@@ -49,7 +49,7 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
       <div className="px-6 md:px-10">
-        <div className="mx-auto flex h-20 w-full max-w-[1440px] items-center gap-6">
+        <div className="mx-auto flex h-20 w-full max-w-[1320px] items-center gap-6">
           <span
             className="text-[2.55rem] font-bold tracking-tight"
             style={{ fontFamily: "var(--font-baloo)", color: "#1a2a52" }}
