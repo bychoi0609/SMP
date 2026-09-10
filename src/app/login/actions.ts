@@ -28,12 +28,14 @@ export async function login(
   }
 
   const cookieStore = await cookies()
+  // maxAge를 지정하지 않으면 브라우저 세션 쿠키가 되어, 브라우저(컴퓨터)를 완전히 껐다 켜면
+  // 쿠키가 사라져 다시 로그인해야 한다("계속 사용하기/이전 세션 복원" 브라우저 설정이 켜져 있으면
+  // 예외적으로 유지될 수 있음).
   cookieStore.set(SESSION_COOKIE_NAME, createSessionCookieValue(), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
   })
 
   redirect(next)
