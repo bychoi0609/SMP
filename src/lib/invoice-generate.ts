@@ -5,7 +5,7 @@ import path from "node:path"
 
 import { prisma } from "@/lib/prisma"
 import { matchInvoiceTemplateRows, SHEET_NAME } from "@/lib/invoice-xls-generator"
-import { writeInvoiceValuesWithExcel } from "@/lib/invoice-xls-excel-writer"
+import { writeInvoiceValues } from "@/lib/invoice-xlsx-writer"
 
 function outputDir(): string {
   // 파일을 만들고 바로 읽어서 base64로 반환하는 스크래치 용도라 영속 저장이 필요 없다.
@@ -19,7 +19,7 @@ export type GenerateInvoiceResult =
   | { error: string }
 
 // 거래처+귀속월의 정상매칭 SMP 데이터를, 거래처에 등록된 한전 세금계산서
-// 일괄등록 양식(.xls) 원본을 그대로 불러와 발전소별 행에 숫자·품목·작성일자만
+// 일괄등록 양식(.xlsx) 원본을 그대로 불러와 발전소별 행에 숫자·품목·작성일자만
 // 채워 넣는다(양식 자체는 수정하지 않음). 발행 이력은 별도로 남기지 않고,
 // 누를 때마다 현재 SMP 데이터 기준으로 새로 생성해 바로 다운로드한다.
 export async function generateInvoiceFile(
@@ -32,6 +32,12 @@ export async function generateInvoiceFile(
   if (!clientGroup) return { error: "거래처를 찾을 수 없습니다." }
   if (!clientGroup.invoiceTemplatePath) {
     return { error: "이 거래처에는 등록된 세금계산서 양식이 없습니다." }
+  }
+  if (!clientGroup.invoiceTemplatePath.toLowerCase().endsWith(".xlsx")) {
+    return {
+      error:
+        "양식 파일이 .xlsx 형식이 아닙니다. 기존 .xls 양식은 Excel에서 열어 \"다른 이름으로 저장\" > .xlsx로 변환한 뒤 경로를 다시 등록해 주세요.",
+    }
   }
 
   const rows = await prisma.smpMonthly.findMany({
@@ -56,10 +62,10 @@ export async function generateInvoiceFile(
   )
 
   await mkdir(outputDir(), { recursive: true })
-  const fileName = `${clientGroup.name}_${billingYearMonth}_세금계산서등록양식.xls`
+  const fileName = `${clientGroup.name}_${billingYearMonth}_세금계산서등록양식.xlsx`
   const filePath = path.join(outputDir(), fileName)
   await copyFile(templatePath, filePath)
-  await writeInvoiceValuesWithExcel(filePath, SHEET_NAME, writes)
+  await writeInvoiceValues(filePath, SHEET_NAME, writes)
 
   const buffer = await readFile(filePath)
   return { fileName, base64: buffer.toString("base64"), unmatchedPlantNames }

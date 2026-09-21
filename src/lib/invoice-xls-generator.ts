@@ -3,11 +3,12 @@ import * as XLSX from "xlsx"
 
 import type { PlantMaster, SmpMonthly } from "@/generated/prisma/client"
 
-// 실제 한전 세금계산서 일괄등록 양식(.xls)에서, 발전소별로 이미 채워져 있는
+// 실제 한전 세금계산서 일괄등록 양식(.xlsx)에서, 발전소별로 이미 채워져 있는
 // 행을 "비고"(V열) 별칭으로 매칭해 값을 채워야 할 행 번호를 찾는다. 이 모듈은
 // 매칭만 담당하며(읽기 전용), 실제 셀 입력은 서식(열너비·행높이·셀 음영 등)을
-// 그대로 보존하기 위해 Excel(COM)로 처리한다 — invoice-xls-excel-writer 참고.
-// (xlsx(SheetJS) 커뮤니티 에디션으로 재직렬화하면 행 높이·셀 배경색이 소실됨)
+// 그대로 보존하기 위해 ExcelJS로 처리한다 — invoice-xlsx-writer 참고.
+// (xlsx(SheetJS) 커뮤니티 에디션은 스타일 저장을 지원하지 않아 재직렬화하면
+// 행 높이·셀 배경색이 소실된다 — 읽기 전용 매칭에는 문제 없어 그대로 사용)
 
 export const SHEET_NAME = "엑셀업로드양식"
 const DATA_START_ROW = 7 // 1-indexed, 6행 헤더 다음부터 데이터

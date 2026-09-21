@@ -176,11 +176,14 @@ export function ClientGroupForm({
         <FieldSet>
           <FieldLegend>세금계산서 양식</FieldLegend>
           <FieldDescription>
-            이 거래처의 한전 세금계산서 일괄등록 양식(.xls) 원본 파일 경로입니다.
+            이 거래처의 한전 세금계산서 일괄등록 양식(.xlsx) 원본 파일 경로입니다.
             발전소별 행이 이미 채워진 실제 양식 파일이어야 하며, 세금계산서
             생성 시 이 파일의 T·U·AB·AC열(공급가액·세액)과 B열(작성일자),
             X열(품목1)만 채워 넣습니다. 비워두면 이 거래처는 세금계산서
-            자동 생성 대상에서 제외됩니다.
+            자동 생성 대상에서 제외됩니다. 한전에서 받은 원본이 .xls(구버전)
+            파일이면 Excel에서 열어 &quot;다른 이름으로 저장&quot;으로 .xlsx로
+            변환한 뒤 그 파일의 경로를 입력해 주세요(서버 배포 환경에서는
+            .xls 원본을 그대로 채울 수 없습니다).
           </FieldDescription>
           <Field data-invalid={!!fieldErrors.invoiceTemplatePath}>
             <FieldLabel htmlFor="invoiceTemplatePath">
@@ -189,7 +192,7 @@ export function ClientGroupForm({
             <Input
               id="invoiceTemplatePath"
               name="invoiceTemplatePath"
-              placeholder="예: templates/invoices/키스트론_SMP_세금계산서등록양식(일반).xls"
+              placeholder="예: templates/invoices/키스트론_SMP_세금계산서등록양식(일반).xlsx"
               defaultValue={defaultValues.invoiceTemplatePath}
               aria-invalid={!!fieldErrors.invoiceTemplatePath}
             />

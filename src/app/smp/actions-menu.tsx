@@ -47,7 +47,10 @@ export function ActionsMenu({
           `양식에서 매칭되는 행을 찾지 못한 발전소: ${result.unmatchedPlantNames.join(", ")}`,
         )
       }
-      const blob = base64ToBlob(result.base64, "application/vnd.ms-excel")
+      const blob = base64ToBlob(
+        result.base64,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      )
       downloadBlob(blob, result.fileName)
       toast.success("세금계산서 파일을 생성했습니다.")
     })
