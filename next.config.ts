@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
   // @sparticuz/chromium의 bin(실제 Chromium 바이너리)과 PDF에 인라인 임베드하는
   // Pretendard 폰트는 코드에서 동적 경로로 읽기 때문에 빌드 시 자동으로 추적되지
   // 않는다. PDF 생성 라우트에서 수동으로 포함시켜줘야 Vercel 배포본에 실제로 올라간다.
+  // 세금계산서 양식(templates/invoices/*)도 DB에 저장된 경로(clientGroup.invoiceTemplatePath)를
+  // 런타임에 읽는 동적 경로라 마찬가지로 수동 포함이 필요하다.
   outputFileTracingIncludes: {
     "/api/smp/[id]/pdf": [
       "./node_modules/@sparticuz/chromium/bin/**/*",
@@ -16,6 +18,7 @@ const nextConfig: NextConfig = {
       "./node_modules/@sparticuz/chromium/bin/**/*",
       "./node_modules/pretendard/dist/web/static/woff2/Pretendard-{Regular,Bold}.woff2",
     ],
+    "/smp": ["./templates/invoices/**/*"],
   },
 };
 
