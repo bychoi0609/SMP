@@ -110,12 +110,14 @@ function groupTaxInvoiceRowsByMonth(rows: TaxInvoiceRow[]): MonthGroup[] {
   })
 }
 
-// "YYYY-MM-DD" 문자열을 로컬 타임존 기준 Date로 변환한다(new Date("YYYY-MM-DD")의 UTC 파싱으로 인한
-// 날짜 밀림을 방지). 결제일이 비어있으면 null.
+// "YYYY-MM-DD" 문자열을 Date로 변환한다. exceljs는 셀에 쓸 때 Date#getTime()(UTC 기준 절대시각)을
+// 그대로 엑셀 일련번호로 환산하므로(utils.dateToExcel), 로컬 타임존 기준으로 만든 Date(예: KST 자정)를
+// 넘기면 UTC로는 전날 오후가 되어 하루 밀려 표시된다 — 반드시 UTC 자정으로 만들어야 한다.
+// 결제일이 비어있으면 null.
 function parseDateOnlyToDate(dateStr: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr)
   if (!m) return null
-  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
 }
 
 interface ColumnSpec<T> {
