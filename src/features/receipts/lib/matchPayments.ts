@@ -42,6 +42,8 @@ function counterpartyNameFoundIn(row: TaxInvoiceRow, tx: BankTransaction): boole
 // 매칭 대상도 세금계산서의 귀속월(작성일자 기준 YYYY-MM)과 같은 달의 통장내역으로 한정한다 —
 // 예) 7월 세금계산서는 7월(1~31일) 통장내역에서만 찾는다. 다른 달에 우연히 금액이 같은
 // 무관한 거래와 매칭되는 것을 막는다. 이미 결제일이 채워진 행(수기 입력 포함)은 건드리지 않는다.
+// 주의: 결제일이 작성일자보다 이를 수도 있다(선수금/선급금, taxInvoiceHardRules 참고) —
+// 같은 귀속월 안이라면 작성일자 이전 거래도 매칭 대상에서 제외하지 않는다.
 export function matchTaxInvoicesWithBank(
   rows: TaxInvoiceRow[],
   direction: TaxInvoiceDirection,
@@ -53,12 +55,8 @@ export function matchTaxInvoicesWithBank(
     const amountMatches = bankTransactions.filter((tx) => {
       const amount = bankAmountFor(direction, tx)
       if (amount <= 0 || amount !== row.totalAmount) return false
-      if (row.writtenDate) {
-        // 결제일이 세금계산서 작성일보다 앞설 수는 없다 — 우연히 금액만 같은 무관한 거래를 배제.
-        if (tx.dateOnly < row.writtenDate) return false
-        // 같은 귀속월(YYYY-MM)의 통장내역만 대상으로 삼는다.
-        if (tx.dateOnly.slice(0, 7) !== row.writtenDate.slice(0, 7)) return false
-      }
+      // 같은 귀속월(YYYY-MM)의 통장내역만 대상으로 삼는다.
+      if (row.writtenDate && tx.dateOnly.slice(0, 7) !== row.writtenDate.slice(0, 7)) return false
       return true
     })
 
