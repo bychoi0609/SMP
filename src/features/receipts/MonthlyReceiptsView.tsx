@@ -33,7 +33,7 @@ function cardLabelFor(last4: string, cardMaster: CardMasterEntry[]): string {
 // 정리 화면에서 확정된(DB에 저장된) 영수증 데이터를 기간(귀속월 범위)+조건으로 조회하는 화면. 카드별
 // 구분 없이 모든 카드의 영수증을 함께 보여준다. 편집은 /receipts의 영수증 모달에서만 한다.
 export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsViewProps) {
-  // 카드 닉네임(카드 마스터)은 여전히 이 브라우저의 localStorage에서 관리한다(별도 범위).
+  // 카드 닉네임(카드 마스터)은 여전히 정리 화면과 별도 범위(서버 draft 상태)로 관리한다.
   const [cardMaster] = usePersistentState<CardMasterEntry[]>('cardMaster', DEFAULT_CARD_MASTER)
 
   const [startMonth, setStartMonth] = useState('')

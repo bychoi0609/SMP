@@ -347,3 +347,15 @@ model ReceiptCardRow {
   @@index([billingYearMonth])
   @@map("receipt_card_row")
 }
+
+// "정리" 화면(확정 전)에서 작업중인 draft 상태를 저장하는 범용 key-value 테이블. 예전에는
+// 브라우저 localStorage에만 저장돼 다른 컴퓨터에서 접속하면 작업 내용이 안 보이는 문제가 있었다.
+// 타입 있는 테이블을 따로 두지 않고 JSON으로 저장한다 — 확정된 데이터는 이미
+// ReceiptTaxInvoiceRow/ReceiptCardRow에 타입 있게 저장되므로, draft는 가볍게 다루어도 충분하다.
+model ReceiptDraftState {
+  key       String   @id // 'salesRows' | 'purchaseRows' | 'receiptEntries' | 'cardMaster' | 'accountRules'
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("receipt_draft_state")
+}

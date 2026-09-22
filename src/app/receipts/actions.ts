@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { prisma } from "@/lib/prisma"
+import type { Prisma } from "@/generated/prisma/client"
 import type { ReceiptRow, TaxInvoiceRow } from "@/features/receipts/types/tables"
 
 export type ReceiptCategoryValue = "SALES" | "PURCHASE" | "RECEIPT"
@@ -197,4 +198,25 @@ export async function getConfirmedReceiptCardRowsAction(): Promise<ReceiptCardRo
       detail: r.detail,
     },
   }))
+}
+
+// "정리" 화면의 확정 전 작업중(draft) 상태 하나를 읽는다. 저장된 적 없으면 null.
+export async function getReceiptDraftStateAction(key: string): Promise<unknown> {
+  const row = await prisma.receiptDraftState.findUnique({ where: { key } })
+  return row?.value ?? null
+}
+
+// 확정 전 작업중(draft) 상태를 통째로 덮어쓴다 — 이전에는 브라우저 localStorage에만 저장돼
+// 다른 컴퓨터에서 접속하면 안 보였던 부분(salesRows/purchaseRows/receiptEntries/cardMaster/
+// accountRules)을 서버에 저장해 어느 컴퓨터에서 접속해도 이어서 작업할 수 있게 한다.
+export async function setReceiptDraftStateAction(
+  key: string,
+  value: unknown,
+): Promise<{ error?: string }> {
+  await prisma.receiptDraftState.upsert({
+    where: { key },
+    update: { value: value as Prisma.InputJsonValue },
+    create: { key, value: value as Prisma.InputJsonValue },
+  })
+  return {}
 }

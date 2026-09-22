@@ -106,73 +106,22 @@ export default function ReceiptsApp() {
     refreshConfirmedMonths('RECEIPT')
   }, [])
 
-  // 각 카테고리(매출/매입/영수증) 모달은 실제 상태를 바로 고치지 않고 임시 작업본(draft)에서 편집한다.
-  // 모달을 닫을 때 열었을 당시 스냅샷(baseline)과 달라졌으면 저장 여부를 확인하고, "확인"을 눌러야
-  // 실제 상태(setSalesRows 등)에 반영되어 localStorage에도 저장된다.
-  const [salesDraft, setSalesDraft] = useState<TaxInvoiceRow[] | null>(null)
-  const [purchaseDraft, setPurchaseDraft] = useState<TaxInvoiceRow[] | null>(null)
-  const [receiptDraft, setReceiptDraft] = useState<ReceiptEntry[] | null>(null)
-  const salesBaselineRef = useRef<TaxInvoiceRow[] | null>(null)
-  const purchaseBaselineRef = useRef<TaxInvoiceRow[] | null>(null)
-  const receiptBaselineRef = useRef<ReceiptEntry[] | null>(null)
-  const prevOpenModalTabRef = useRef<MainTab | null>(null)
   // 영수증 모달 안 "엑셀" 드롭다운의 "엑셀 업로드" 메뉴에서 쓴다 — 법인카드(양식).xlsx처럼 시트명이
   // 카드 뒷자리 4개인, 현장명/내역을 사람이 채워넣은 파일을 매칭 전용으로 올리는 숨김 입력이다
   // (상단 FileDropzone의 원본 카드사 파일 업로드와는 별개의 기능).
   const receiptUploadInputRef = useRef<HTMLInputElement>(null)
 
-  // openModalTab이 바뀐 시점(모달을 새로 열거나 닫을 때)에만 한 번, 그 카테고리의 draft/baseline을
-  // 최신 실제 상태로 스냅샷한다. useEffect 대신 렌더 중 조건부 setState로 처리해 한 프레임 지연 없이 반영한다.
-  if (prevOpenModalTabRef.current !== openModalTab) {
-    prevOpenModalTabRef.current = openModalTab
-    salesBaselineRef.current = openModalTab === 'sales' ? salesRows : null
-    setSalesDraft(openModalTab === 'sales' ? salesRows : null)
-    purchaseBaselineRef.current = openModalTab === 'purchase' ? purchaseRows : null
-    setPurchaseDraft(openModalTab === 'purchase' ? purchaseRows : null)
-    receiptBaselineRef.current = openModalTab === 'receipt' ? receiptEntries : null
-    setReceiptDraft(openModalTab === 'receipt' ? receiptEntries : null)
-  }
-
-  // 모달을 닫거나 다른 카테고리 탭으로 전환하려 할 때 호출한다. 편집 중이던 draft가 열었을 때와
-  // 달라졌으면 저장 여부를 확인하고, "확인"을 누른 경우에만 실제 상태에 반영한다.
-  function requestSetOpenModalTab(next: MainTab | null) {
-    const current = openModalTab
-    if (current === null || current === next) {
-      setOpenModalTab(next)
-      return
-    }
-
-    let dirty = false
-    if (current === 'sales') dirty = JSON.stringify(salesDraft) !== JSON.stringify(salesBaselineRef.current)
-    if (current === 'purchase') dirty = JSON.stringify(purchaseDraft) !== JSON.stringify(purchaseBaselineRef.current)
-    if (current === 'receipt') dirty = JSON.stringify(receiptDraft) !== JSON.stringify(receiptBaselineRef.current)
-
-    if (dirty && window.confirm('변경사항을 저장하시겠습니까?')) {
-      if (current === 'sales' && salesDraft) setSalesRows(salesDraft)
-      if (current === 'purchase' && purchaseDraft) setPurchaseRows(purchaseDraft)
-      if (current === 'receipt' && receiptDraft) setReceiptEntries(receiptDraft)
-    }
-
-    setOpenModalTab(next)
-  }
-
   const receiptGrouping = useMemo(
     () => groupReceiptsByCard(receiptEntries, cardMaster),
     [receiptEntries, cardMaster],
   )
+  const activeCardSheet =
+    receiptGrouping.sheets.find((s) => s.last4 === activeCardLast4) ?? receiptGrouping.sheets[0]
 
-  // 영수증 모달이 열려 있는 동안에는 draft 기준으로 카드별 시트를 그룹핑해 화면에 보여준다.
-  const draftReceiptGrouping = useMemo(
-    () => groupReceiptsByCard(receiptDraft ?? [], cardMaster),
-    [receiptDraft, cardMaster],
-  )
-  const draftActiveCardSheet =
-    draftReceiptGrouping.sheets.find((s) => s.last4 === activeCardLast4) ?? draftReceiptGrouping.sheets[0]
-
-  // 세금계산서 월별 필터 — draft 기준으로 월별 그룹을 만들고, 선택된 필터에 해당하는 행/전체 배열
-  // 인덱스(globalIndices)를 계산한다. 'all'이면 전체 draft를 그대로 보여준다.
-  const salesMonthGroups = useMemo(() => groupTaxInvoiceRowsByMonth(salesDraft ?? []), [salesDraft])
-  const purchaseMonthGroups = useMemo(() => groupTaxInvoiceRowsByMonth(purchaseDraft ?? []), [purchaseDraft])
+  // 세금계산서 월별 필터 — 월별 그룹을 만들고, 선택된 필터에 해당하는 행/전체 배열 인덱스(globalIndices)를
+  // 계산한다. 'all'이면 전체를 그대로 보여준다.
+  const salesMonthGroups = useMemo(() => groupTaxInvoiceRowsByMonth(salesRows), [salesRows])
+  const purchaseMonthGroups = useMemo(() => groupTaxInvoiceRowsByMonth(purchaseRows), [purchaseRows])
 
   // 선택된 월이 (초기화 등으로) 더 이상 존재하지 않으면 "전체"로 취급한다.
   const effectiveSalesMonthFilter =
@@ -185,20 +134,19 @@ export default function ReceiptsApp() {
       : 'all'
 
   const { rows: visibleSalesRows, globalIndices: salesGlobalIndices } = useMemo(() => {
-    const draft = salesDraft ?? []
-    if (effectiveSalesMonthFilter === 'all') return { rows: draft, globalIndices: draft.map((_, i) => i) }
+    if (effectiveSalesMonthFilter === 'all') return { rows: salesRows, globalIndices: salesRows.map((_, i) => i) }
     const group = salesMonthGroups.find((g) => g.month === effectiveSalesMonthFilter)
     return { rows: group?.rows ?? [], globalIndices: group?.globalIndices ?? [] }
-  }, [salesDraft, salesMonthGroups, effectiveSalesMonthFilter])
+  }, [salesRows, salesMonthGroups, effectiveSalesMonthFilter])
 
   const { rows: visiblePurchaseRows, globalIndices: purchaseGlobalIndices } = useMemo(() => {
-    const draft = purchaseDraft ?? []
-    if (effectivePurchaseMonthFilter === 'all') return { rows: draft, globalIndices: draft.map((_, i) => i) }
+    if (effectivePurchaseMonthFilter === 'all')
+      return { rows: purchaseRows, globalIndices: purchaseRows.map((_, i) => i) }
     const group = purchaseMonthGroups.find((g) => g.month === effectivePurchaseMonthFilter)
     return { rows: group?.rows ?? [], globalIndices: group?.globalIndices ?? [] }
-  }, [purchaseDraft, purchaseMonthGroups, effectivePurchaseMonthFilter])
+  }, [purchaseRows, purchaseMonthGroups, effectivePurchaseMonthFilter])
 
-  // 확정된 달에 속한 draft 배열 인덱스(전역 인덱스) 집합 — "전체" 탭처럼 확정/미확정 달이 섞여 있어도
+  // 확정된 달에 속한 배열 인덱스(전역 인덱스) 집합 — "전체" 탭처럼 확정/미확정 달이 섞여 있어도
   // 행 단위로 잠글 수 있도록 한다.
   const lockedSalesGlobalIndices = useMemo(
     () =>
@@ -215,9 +163,9 @@ export default function ReceiptsApp() {
     [purchaseMonthGroups, purchaseConfirmedMonths],
   )
 
-  // 영수증은 카드 탭만 있고 월 탭이 없으므로, 확정용 월 목록/잠금 판정은 draft 전체(카드 무관)를
-  // 기준으로 따로 계산한다.
-  const receiptMonthGroups = useMemo(() => groupReceiptsByMonth(receiptDraft ?? []), [receiptDraft])
+  // 영수증은 카드 탭만 있고 월 탭이 없으므로, 확정용 월 목록/잠금 판정은 전체(카드 무관)를 기준으로
+  // 따로 계산한다.
+  const receiptMonthGroups = useMemo(() => groupReceiptsByMonth(receiptEntries), [receiptEntries])
   const lockedReceiptGlobalIndices = useMemo(
     () =>
       new Set(
@@ -380,12 +328,11 @@ export default function ReceiptsApp() {
   // (실수로 전체 누적 데이터가 한 번에 날아가는 것을 방지).
   // 확정되어 잠긴 행(lockedGlobalIndices)은 항상 삭제 대상에서 제외한다.
   function handleClearAllTaxInvoice(
-    draft: TaxInvoiceRow[] | null,
+    rows: TaxInvoiceRow[],
     monthFilter: string,
-    setDraft: (rows: TaxInvoiceRow[]) => void,
+    setRows: (rows: TaxInvoiceRow[]) => void,
     lockedGlobalIndices: Set<number>,
   ) {
-    const rows = draft ?? []
     const allClearableCount = rows.length - lockedGlobalIndices.size
 
     if (monthFilter === 'all') {
@@ -395,7 +342,7 @@ export default function ReceiptsApp() {
       }
       const suffix = lockedGlobalIndices.size > 0 ? ` (확정된 ${lockedGlobalIndices.size}건은 제외됩니다.)` : ''
       if (window.confirm(`${allClearableCount}건의 데이터를 모두 초기화하시겠습니까? 되돌릴 수 없습니다.${suffix}`)) {
-        setDraft(renumber(rows.filter((_, i) => lockedGlobalIndices.has(i))))
+        setRows(renumber(rows.filter((_, i) => lockedGlobalIndices.has(i))))
       }
       return
     }
@@ -408,7 +355,7 @@ export default function ReceiptsApp() {
     }
     if (window.confirm(`선택한 ${monthFilter} 월 데이터 ${clearableMonthIndices.length}건만 초기화하시겠습니까?`)) {
       const toRemove = new Set(clearableMonthIndices)
-      setDraft(renumber(rows.filter((_, i) => !toRemove.has(i))))
+      setRows(renumber(rows.filter((_, i) => !toRemove.has(i))))
       return
     }
     if (allClearableCount <= 0) return
@@ -416,16 +363,16 @@ export default function ReceiptsApp() {
     if (
       window.confirm(`취소하셨습니다. 대신 전체 데이터(${allClearableCount}건)를 모두 초기화하시겠습니까? 되돌릴 수 없습니다.${suffix}`)
     ) {
-      setDraft(renumber(rows.filter((_, i) => lockedGlobalIndices.has(i))))
+      setRows(renumber(rows.filter((_, i) => lockedGlobalIndices.has(i))))
     }
   }
 
-  // 세금계산서(매출/매입) 모달 안의 "엑셀 다운" 버튼 — 화면에 보이는(아직 저장 전일 수 있는) draft 기준으로
-  // 내보낸다. 월 탭이 "전체"면 월별 시트로 나뉜 전체 데이터를, 특정 월이 선택되어 있으면 그 월만 단일
-  // 시트로 내보낸다(전체 탭에서 다운로드하면 이미 전체가 나가므로 별도 버튼으로 나눌 필요가 없다).
+  // 세금계산서(매출/매입) 모달 안의 "엑셀 다운" 버튼 — 월 탭이 "전체"면 월별 시트로 나뉜 전체 데이터를,
+  // 특정 월이 선택되어 있으면 그 월만 단일 시트로 내보낸다(전체 탭에서 다운로드하면 이미 전체가 나가므로
+  // 별도 버튼으로 나눌 필요가 없다).
   function handleDownloadSales() {
     if (effectiveSalesMonthFilter === 'all') {
-      downloadSalesWorkbook(salesDraft ?? []).catch((e) =>
+      downloadSalesWorkbook(salesRows).catch((e) =>
         addError(e instanceof Error ? e.message : '다운로드 중 오류가 발생했습니다.'),
       )
       return
@@ -436,7 +383,7 @@ export default function ReceiptsApp() {
   }
   function handleDownloadPurchase() {
     if (effectivePurchaseMonthFilter === 'all') {
-      downloadPurchaseWorkbook(purchaseDraft ?? []).catch((e) =>
+      downloadPurchaseWorkbook(purchaseRows).catch((e) =>
         addError(e instanceof Error ? e.message : '다운로드 중 오류가 발생했습니다.'),
       )
       return
@@ -445,10 +392,10 @@ export default function ReceiptsApp() {
       addError(e instanceof Error ? e.message : '다운로드 중 오류가 발생했습니다.'),
     )
   }
-  // 영수증 모달 안의 "엑셀 다운" 버튼 — 화면에 보이는(아직 저장 전일 수 있는) draft 기준으로 카드별 시트를
-  // 모두 담아 내보낸다(현재 선택된 카드 탭과 무관하게 전체 카드 시트를 내보낸다).
+  // 영수증 모달 안의 "엑셀 다운" 버튼 — 카드별 시트를 모두 담아 내보낸다(현재 선택된 카드 탭과 무관하게
+  // 전체 카드 시트를 내보낸다).
   function handleDownloadReceipt() {
-    downloadReceiptWorkbook(draftReceiptGrouping.sheets).catch((e) =>
+    downloadReceiptWorkbook(receiptGrouping.sheets).catch((e) =>
       addError(e instanceof Error ? e.message : '다운로드 중 오류가 발생했습니다.'),
     )
   }
@@ -583,7 +530,7 @@ export default function ReceiptsApp() {
   // 없는 파일을 올려, 날짜/거래처명/공급가액/세액/합계가 모두 일치하는 draft 행을 찾아 현장명/내역만
   // 채워 넣는다(다른 필드는 건드리지 않음). 일반 카드사 원본 업로드(handleFiles)와는 별개의 기능이다.
   async function handleReceiptMappingUpload(files: File[]) {
-    let current = receiptDraft ?? receiptEntries
+    let current = receiptEntries
     for (const file of files) {
       let workbook: RawWorkbook
       try {
@@ -607,7 +554,7 @@ export default function ReceiptsApp() {
         `"${file.name}" 매핑 결과 — 현장명/내역 자동 입력 ${result.matchedCount}건, 일치하는 행을 찾지 못함 ${result.unmatchedCount}건.`,
       )
     }
-    setReceiptDraft(current)
+    setReceiptEntries(current)
   }
 
   const salesColumns = useMemo(
@@ -616,7 +563,7 @@ export default function ReceiptsApp() {
         onChange: (visibleIndex, patch) => {
           const index = salesGlobalIndices[visibleIndex]
           if (index === undefined) return
-          setSalesDraft((prev) => (prev ? applyTaxInvoiceRowUpdate(prev, index, patch, 'sales', accountRules) : prev))
+          setSalesRows((prev) => applyTaxInvoiceRowUpdate(prev, index, patch, 'sales', accountRules))
         },
         counterpartyNameListId: COUNTERPARTY_LIST_ID,
         accountCodeOptions: salesAccountCodes,
@@ -636,9 +583,7 @@ export default function ReceiptsApp() {
         onChange: (visibleIndex, patch) => {
           const index = purchaseGlobalIndices[visibleIndex]
           if (index === undefined) return
-          setPurchaseDraft((prev) =>
-            prev ? applyTaxInvoiceRowUpdate(prev, index, patch, 'purchase', accountRules) : prev,
-          )
+          setPurchaseRows((prev) => applyTaxInvoiceRowUpdate(prev, index, patch, 'purchase', accountRules))
         },
         counterpartyNameListId: COUNTERPARTY_LIST_ID,
         accountCodeOptions: purchaseAccountCodes,
@@ -656,10 +601,10 @@ export default function ReceiptsApp() {
     () =>
       createReceiptColumns({
         onChange: (displayIndex, patch) => {
-          const globalIndex = draftActiveCardSheet?.globalIndices[displayIndex]
+          const globalIndex = activeCardSheet?.globalIndices[displayIndex]
           if (globalIndex === undefined) return
-          setReceiptDraft((prev) =>
-            (prev ?? []).map((entry, i) =>
+          setReceiptEntries((prev) =>
+            prev.map((entry, i) =>
               i === globalIndex ? { ...entry, row: applyReceiptRowUpdate(entry.row, patch, accountRules) } : entry,
             ),
           )
@@ -668,11 +613,11 @@ export default function ReceiptsApp() {
         accountCodeOptions: receiptAccountCodes,
         detailOptions: receiptDetailOptions,
         isRowLocked: (displayIndex) => {
-          const globalIndex = draftActiveCardSheet?.globalIndices[displayIndex]
+          const globalIndex = activeCardSheet?.globalIndices[displayIndex]
           return globalIndex !== undefined && lockedReceiptGlobalIndices.has(globalIndex)
         },
       }),
-    [draftActiveCardSheet, receiptAccountCodes, receiptDetailOptions, accountRules, lockedReceiptGlobalIndices],
+    [activeCardSheet, receiptAccountCodes, receiptDetailOptions, accountRules, lockedReceiptGlobalIndices],
   )
 
   return (
@@ -680,8 +625,8 @@ export default function ReceiptsApp() {
       <div className="mb-6">
         <h1 className="text-xl font-semibold">영수증·세금계산서 정리</h1>
         <p className="text-sm text-muted-foreground">
-          홈택스 세금계산서, 카드사 영수증, 통장내역 엑셀 파일을 업로드해 정리하고 다시 엑셀로 내려받습니다. 이
-          브라우저에만 저장되며(다른 기기와 공유되지 않음), 서버에는 전송되지 않습니다.
+          홈택스 세금계산서, 카드사 영수증, 통장내역 엑셀 파일을 업로드해 정리하고 다시 엑셀로 내려받습니다. 편집한
+          내용은 즉시 서버에 저장되어 다른 기기에서 접속해도 이어서 작업할 수 있습니다.
         </p>
       </div>
 
@@ -756,21 +701,21 @@ export default function ReceiptsApp() {
           <button
             type="button"
             className={openModalTab === 'sales' ? 'active' : ''}
-            onClick={() => requestSetOpenModalTab(openModalTab === 'sales' ? null : 'sales')}
+            onClick={() => setOpenModalTab(openModalTab === 'sales' ? null : 'sales')}
           >
             세금계산서(매출) {salesRows.length > 0 && `(${salesRows.length})`}
           </button>
           <button
             type="button"
             className={openModalTab === 'purchase' ? 'active' : ''}
-            onClick={() => requestSetOpenModalTab(openModalTab === 'purchase' ? null : 'purchase')}
+            onClick={() => setOpenModalTab(openModalTab === 'purchase' ? null : 'purchase')}
           >
             세금계산서(매입) {purchaseRows.length > 0 && `(${purchaseRows.length})`}
           </button>
           <button
             type="button"
             className={openModalTab === 'receipt' ? 'active' : ''}
-            onClick={() => requestSetOpenModalTab(openModalTab === 'receipt' ? null : 'receipt')}
+            onClick={() => setOpenModalTab(openModalTab === 'receipt' ? null : 'receipt')}
           >
             영수증
           </button>
@@ -786,7 +731,7 @@ export default function ReceiptsApp() {
       </div>
 
       {openModalTab === 'sales' && (
-        <Modal title="세금계산서(매출)" onClose={() => requestSetOpenModalTab(null)}>
+        <Modal title="세금계산서(매출)" onClose={() => setOpenModalTab(null)}>
           <Table
             columns={salesColumns}
             rows={visibleSalesRows}
@@ -844,18 +789,18 @@ export default function ReceiptsApp() {
             onDeleteRow={(visibleIndex) => {
               const index = salesGlobalIndices[visibleIndex]
               if (index === undefined) return
-              setSalesDraft((prev) => renumber((prev ?? []).filter((_, i) => i !== index)))
+              setSalesRows((prev) => renumber(prev.filter((_, i) => i !== index)))
             }}
             isRowDisabled={(visibleIndex) => {
               const index = salesGlobalIndices[visibleIndex]
               return index !== undefined && lockedSalesGlobalIndices.has(index)
             }}
             onAddRow={() => {
-              setSalesDraft((prev) => [...(prev ?? []), createBlankTaxInvoiceRow((prev ?? []).length + 1)])
+              setSalesRows((prev) => [...prev, createBlankTaxInvoiceRow(prev.length + 1)])
               setSalesMonthFilter('all')
             }}
             onClearAll={() =>
-              handleClearAllTaxInvoice(salesDraft, effectiveSalesMonthFilter, setSalesDraft, lockedSalesGlobalIndices)
+              handleClearAllTaxInvoice(salesRows, effectiveSalesMonthFilter, setSalesRows, lockedSalesGlobalIndices)
             }
             skipClearAllConfirm
             footerCells={taxInvoiceFooterCells}
@@ -863,7 +808,7 @@ export default function ReceiptsApp() {
         </Modal>
       )}
       {openModalTab === 'purchase' && (
-        <Modal title="세금계산서(매입)" onClose={() => requestSetOpenModalTab(null)}>
+        <Modal title="세금계산서(매입)" onClose={() => setOpenModalTab(null)}>
           <Table
             columns={purchaseColumns}
             rows={visiblePurchaseRows}
@@ -921,21 +866,21 @@ export default function ReceiptsApp() {
             onDeleteRow={(visibleIndex) => {
               const index = purchaseGlobalIndices[visibleIndex]
               if (index === undefined) return
-              setPurchaseDraft((prev) => renumber((prev ?? []).filter((_, i) => i !== index)))
+              setPurchaseRows((prev) => renumber(prev.filter((_, i) => i !== index)))
             }}
             isRowDisabled={(visibleIndex) => {
               const index = purchaseGlobalIndices[visibleIndex]
               return index !== undefined && lockedPurchaseGlobalIndices.has(index)
             }}
             onAddRow={() => {
-              setPurchaseDraft((prev) => [...(prev ?? []), createBlankTaxInvoiceRow((prev ?? []).length + 1)])
+              setPurchaseRows((prev) => [...prev, createBlankTaxInvoiceRow(prev.length + 1)])
               setPurchaseMonthFilter('all')
             }}
             onClearAll={() =>
               handleClearAllTaxInvoice(
-                purchaseDraft,
+                purchaseRows,
                 effectivePurchaseMonthFilter,
-                setPurchaseDraft,
+                setPurchaseRows,
                 lockedPurchaseGlobalIndices,
               )
             }
@@ -946,10 +891,10 @@ export default function ReceiptsApp() {
       )}
 
       {openModalTab === 'receipt' && (
-        <Modal title="영수증" onClose={() => requestSetOpenModalTab(null)}>
+        <Modal title="영수증" onClose={() => setOpenModalTab(null)}>
           <Table
             columns={receiptCols}
-            rows={draftActiveCardSheet?.rows ?? []}
+            rows={activeCardSheet?.rows ?? []}
             searchPlaceholder="거래처명/계정과목 검색..."
             footerCells={receiptFooterCells}
             toolbarExtra={
@@ -1016,11 +961,11 @@ export default function ReceiptsApp() {
             }
             belowToolbar={
               <nav className="card-tabs">
-                {draftReceiptGrouping.sheets.map((sheet) => (
+                {receiptGrouping.sheets.map((sheet) => (
                   <button
                     type="button"
                     key={sheet.last4}
-                    className={sheet.last4 === draftActiveCardSheet?.last4 ? 'active' : ''}
+                    className={sheet.last4 === activeCardSheet?.last4 ? 'active' : ''}
                     onClick={() => setActiveCardLast4(sheet.last4)}
                   >
                     {sheet.name}
@@ -1029,24 +974,24 @@ export default function ReceiptsApp() {
               </nav>
             }
             onDeleteRow={(displayIndex) => {
-              const globalIndex = draftActiveCardSheet?.globalIndices[displayIndex]
+              const globalIndex = activeCardSheet?.globalIndices[displayIndex]
               if (globalIndex === undefined) return
-              setReceiptDraft((prev) => (prev ?? []).filter((_, i) => i !== globalIndex))
+              setReceiptEntries((prev) => prev.filter((_, i) => i !== globalIndex))
             }}
             isRowDisabled={(displayIndex) => {
-              const globalIndex = draftActiveCardSheet?.globalIndices[displayIndex]
+              const globalIndex = activeCardSheet?.globalIndices[displayIndex]
               return globalIndex !== undefined && lockedReceiptGlobalIndices.has(globalIndex)
             }}
             onAddRow={() => {
-              const last4 = draftActiveCardSheet?.last4
+              const last4 = activeCardSheet?.last4
               if (!last4) return
               const blank: ReceiptRow = createBlankReceiptRow()
-              setReceiptDraft((prev) => [...(prev ?? []), { last4, row: blank }])
+              setReceiptEntries((prev) => [...prev, { last4, row: blank }])
             }}
             onClearAll={() => {
-              const globalIndices = new Set(draftActiveCardSheet?.globalIndices ?? [])
-              setReceiptDraft((prev) =>
-                (prev ?? []).filter((_, i) => !globalIndices.has(i) || lockedReceiptGlobalIndices.has(i)),
+              const globalIndices = new Set(activeCardSheet?.globalIndices ?? [])
+              setReceiptEntries((prev) =>
+                prev.filter((_, i) => !globalIndices.has(i) || lockedReceiptGlobalIndices.has(i)),
               )
             }}
           />

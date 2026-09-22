@@ -7,7 +7,9 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "compare-smp-html": "tsx scripts/compare-smp-html.ts",
+    "render-smp-pdf": "tsx scripts/render-smp-pdf.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

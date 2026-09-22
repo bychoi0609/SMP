@@ -117,14 +117,56 @@ interface DateCellProps {
   title?: string
 }
 
+// 숫자만 입력해도(YYMMDD 6자리 또는 YYYYMMDD 8자리) "YYYY-MM-DD"로 정규화한다.
+// 두 자리 연도는 20xx년으로 해석한다 — 대시(-)를 섞어 써도 숫자만 추려 같은 방식으로 처리한다.
+function normalizeTypedDate(input: string): string | null {
+  const digits = input.replace(/\D/g, '')
+  let year: number
+  let month: number
+  let day: number
+  if (digits.length === 6) {
+    year = 2000 + Number(digits.slice(0, 2))
+    month = Number(digits.slice(2, 4))
+    day = Number(digits.slice(4, 6))
+  } else if (digits.length === 8) {
+    year = Number(digits.slice(0, 4))
+    month = Number(digits.slice(4, 6))
+    day = Number(digits.slice(6, 8))
+  } else {
+    return null
+  }
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+// 네이티브 <input type="date">는 브라우저별 세그먼트 입력 방식 때문에 연도 4자리를 다 채우기 전까지
+// 월/일 칸이 밀리는 등 숫자를 연속 타이핑하기 불편해 텍스트 입력 + 자동 정규화 방식으로 대체한다.
 export function DateCell({ value, onChange, highlight, title }: DateCellProps) {
+  const [draft, setDraft] = useState<string | null>(null)
+
   return (
     <input
-      type="date"
+      type="text"
+      inputMode="numeric"
+      placeholder="YYYY-MM-DD"
       className={`cell-input${highlight ? ' cell-input--highlight' : ''}`}
-      value={value}
+      value={draft ?? value}
       title={title}
-      onChange={(e) => onChange(e.target.value)}
+      onFocus={() => setDraft(value)}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={(e) => {
+        const raw = e.target.value.trim()
+        if (raw === '') {
+          onChange('')
+        } else {
+          const normalized = normalizeTypedDate(raw)
+          if (normalized) onChange(normalized)
+        }
+        setDraft(null)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+      }}
     />
   )
 }
