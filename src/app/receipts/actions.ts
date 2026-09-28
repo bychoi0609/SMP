@@ -222,3 +222,63 @@ export async function setReceiptDraftStateAction(
   })
   return {}
 }
+
+const DRAFT_KEY_BY_DIRECTION: Record<TaxInvoiceDirectionValue, string> = {
+  SALES: "salesRows",
+  PURCHASE: "purchaseRows",
+}
+
+function taxInvoiceContentKey(r: {
+  writtenDate: string
+  counterpartyBizNo: string
+  totalAmount: number
+  itemName: string
+}): string {
+  return `${r.writtenDate}|${r.counterpartyBizNo.replace(/\D/g, "")}|${Number(r.totalAmount)}|${r.itemName.trim()}`
+}
+
+// "미수·미지급 현황" 화면에서 확정된 세금계산서 한 건의 결제일을 바로 입력한다. 확정 스냅샷만 고치면
+// 확정 취소 시 스냅샷이 지워지고 재확정 때 draft 값으로 다시 덮어써지므로, 정리 화면 draft의 같은 행도
+// 함께 고친다(승인번호 우선, 없으면 작성일자+사업자번호+합계금액+품목명으로 찾음).
+export async function setConfirmedTaxInvoicePaymentDateAction(
+  id: number,
+  paymentDate: string,
+): Promise<{ error?: string; draftSynced?: boolean }> {
+  if (paymentDate !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) {
+    return { error: "결제일은 YYYY-MM-DD 형식으로 입력해주세요." }
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const row = await tx.receiptTaxInvoiceRow.findUnique({ where: { id } })
+    if (!row) return { error: "해당 세금계산서를 찾을 수 없습니다. 화면을 새로고침해주세요." }
+
+    await tx.receiptTaxInvoiceRow.update({ where: { id }, data: { paymentDate } })
+
+    const draftKey = DRAFT_KEY_BY_DIRECTION[row.direction]
+    const draft = await tx.receiptDraftState.findUnique({ where: { key: draftKey } })
+    const draftRows = Array.isArray(draft?.value) ? (draft.value as unknown as TaxInvoiceRow[]) : []
+    const target = { ...row, totalAmount: Number(row.totalAmount) }
+    const targetKey = taxInvoiceContentKey(target)
+    const matches = (r: TaxInvoiceRow) =>
+      row.approvalNo ? r.approvalNo === row.approvalNo : taxInvoiceContentKey(r) === targetKey
+    // 같은 키의 행이 여럿이면(반복 거래) 결제일이 아직 이전 값 그대로인 행을 우선한다.
+    const exactIndex = draftRows.findIndex((r) => matches(r) && (r.paymentDate ?? "") === row.paymentDate)
+    const draftIndex = exactIndex >= 0 ? exactIndex : draftRows.findIndex(matches)
+    if (draftIndex < 0) return { draftSynced: false }
+
+    // 결제일을 직접 확정했으므로 통장내역 매칭의 "확인 필요" 표시는 지운다.
+    const nextRows = draftRows.map((r, i) =>
+      i === draftIndex ? { ...r, paymentDate, paymentMatchStatus: undefined, paymentMatchNote: undefined } : r,
+    )
+    await tx.receiptDraftState.update({
+      where: { key: draftKey },
+      data: { value: nextRows as unknown as Prisma.InputJsonValue },
+    })
+    return { draftSynced: true }
+  })
+
+  revalidatePath("/receipts")
+  revalidatePath("/receipts/monthly-invoices")
+  revalidatePath("/receipts/outstanding")
+  return result
+}
