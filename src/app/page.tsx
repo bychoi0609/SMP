@@ -56,6 +56,12 @@ const RECEIPTS_SECTIONS = [
     description: "확정된 매출·매입 세금계산서 데이터를 월별로 조회합니다.",
     ready: true,
   },
+  {
+    href: "/receipts/outstanding",
+    title: "미수·미지급 현황",
+    description: "결제일이 비어 있는 외상매출금·외상매입금·미지급금을 거래처별로 확인합니다.",
+    ready: true,
+  },
 ]
 
 function SectionGroup({

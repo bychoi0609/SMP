@@ -76,6 +76,7 @@ export async function confirmTaxInvoiceMonthAction(
   ])
   revalidatePath("/receipts")
   revalidatePath("/receipts/monthly-invoices")
+  revalidatePath("/receipts/outstanding")
   return {}
 }
 
@@ -95,6 +96,7 @@ export async function unconfirmTaxInvoiceMonthAction(
   ])
   revalidatePath("/receipts")
   revalidatePath("/receipts/monthly-invoices")
+  revalidatePath("/receipts/outstanding")
   return {}
 }
 

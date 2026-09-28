@@ -32,6 +32,7 @@ const RECEIPTS_GROUP = {
     { href: "/receipts", label: "영수증/세금계산서 정리" },
     { href: "/receipts/monthly-receipts", label: "월별 영수증 데이터" },
     { href: "/receipts/monthly-invoices", label: "월별 세금계산서 데이터" },
+    { href: "/receipts/outstanding", label: "미수·미지급 현황" },
   ],
 }
 
