@@ -157,7 +157,7 @@ export default function OutstandingView({
             type="month"
             value={startMonth}
             onChange={(e) => setStartMonth(e.target.value)}
-            className="rounded-md border border-input bg-transparent px-2 py-1"
+            className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
           />
         </label>
         <span className="pb-1.5">~</span>
@@ -167,25 +167,28 @@ export default function OutstandingView({
             type="month"
             value={endMonth}
             onChange={(e) => setEndMonth(e.target.value)}
-            className="rounded-md border border-input bg-transparent px-2 py-1"
+            className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
           />
         </label>
         <div className="flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">경과일</span>
-          <nav className="card-tabs">
-            <button
-              type="button"
-              className={agingFilter === 'all' ? 'active' : ''}
-              onClick={() => setAgingFilter('all')}
-            >
-              전체
-            </button>
-            {AGING_BUCKETS.map((b) => (
-              <button type="button" key={b} className={agingFilter === b ? 'active' : ''} onClick={() => setAgingFilter(b)}>
-                {b}
+          <div className="flex items-center gap-1">
+            {(['all', ...AGING_BUCKETS] as const).map((b) => (
+              <button
+                type="button"
+                key={b}
+                onClick={() => setAgingFilter(b)}
+                className={cn(
+                  'h-8 whitespace-nowrap rounded-md border px-2 text-sm transition-colors',
+                  agingFilter === b
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-input bg-transparent hover:bg-muted',
+                )}
+              >
+                {b === 'all' ? '전체' : b}
               </button>
             ))}
-          </nav>
+          </div>
         </div>
         <div className="flex flex-col gap-1 ml-auto mr-4">
           <span className="text-xs text-transparent select-none">조회</span>
@@ -211,15 +214,24 @@ export default function OutstandingView({
           </span>
         </div>
         <div className="max-h-80 overflow-auto">
-          <table className="w-full text-sm">
+          {/* 거래처명만 남는 폭을 가져가고 나머지는 고정폭 — 최소폭(724px) = 거래처명 200 + 고정 칼럼 합계 */}
+          <table className="w-full min-w-[724px] table-fixed text-sm">
+            <colgroup>
+              <col />
+              <col className="w-[130px]" />
+              <col className="w-16" />
+              <col className="w-[140px]" />
+              <col className="w-[110px]" />
+              <col className="w-20" />
+            </colgroup>
             <thead className="sticky top-0 bg-muted text-xs text-muted-foreground">
               <tr>
                 <th className="px-3 py-1.5 text-left font-medium">거래처명</th>
                 <th className="px-3 py-1.5 text-left font-medium">사업자등록번호</th>
                 <th className="px-3 py-1.5 text-right font-medium">건수</th>
                 <th className="px-3 py-1.5 text-right font-medium">합계금액</th>
-                <th className="px-3 py-1.5 text-left font-medium">가장 오래된 작성일자</th>
-                <th className="px-3 py-1.5 text-right font-medium">최장 경과일</th>
+                <th className="px-3 py-1.5 text-left font-medium">최초 작성일</th>
+                <th className="px-3 py-1.5 text-right font-medium">경과일</th>
               </tr>
             </thead>
             <tbody>
@@ -239,7 +251,9 @@ export default function OutstandingView({
                     selectedCounterparty === c.key && 'bg-secondary',
                   )}
                 >
-                  <td className="px-3 py-1.5">{c.counterpartyName}</td>
+                  <td className="truncate px-3 py-1.5" title={c.counterpartyName}>
+                    {c.counterpartyName}
+                  </td>
                   <td className="px-3 py-1.5 tabular-nums">{c.counterpartyBizNo}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{c.count}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{formatNumber(c.totalAmount)}</td>
