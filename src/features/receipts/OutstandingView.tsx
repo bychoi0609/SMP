@@ -179,7 +179,7 @@ export default function OutstandingView({
                 key={b}
                 onClick={() => setAgingFilter(b)}
                 className={cn(
-                  'h-8 whitespace-nowrap rounded-md border px-2 text-sm transition-colors',
+                  'h-8 whitespace-nowrap rounded-full border px-3 text-sm transition-colors',
                   agingFilter === b
                     ? 'border-primary bg-primary text-primary-foreground'
                     : 'border-input bg-transparent hover:bg-muted',
@@ -192,13 +192,13 @@ export default function OutstandingView({
         </div>
         <div className="flex flex-col gap-1 ml-auto mr-4">
           <span className="text-xs text-transparent select-none">조회</span>
-          <Button onClick={handleSearch} className="px-4 py-1">
+          <Button onClick={handleSearch} className="h-8 px-4 py-0">
             조회
           </Button>
         </div>
         <div className="flex flex-col gap-1 -ml-4 mr-2">
           <span className="text-xs text-transparent select-none">다운로드</span>
-          <Button onClick={handleDownload} className="px-4 py-1">
+          <Button onClick={handleDownload} className="h-8 px-4 py-0">
             엑셀 다운
           </Button>
         </div>
@@ -214,15 +214,16 @@ export default function OutstandingView({
           </span>
         </div>
         <div className="max-h-80 overflow-auto">
-          {/* 거래처명만 남는 폭을 가져가고 나머지는 고정폭 — 최소폭(724px) = 거래처명 200 + 고정 칼럼 합계 */}
+          {/* 6칼럼을 거의 균등하게 나누되 거래처명만 조금 더 넓게(20% + 16%×5). 좁은 화면에서는 724px 아래로
+              줄어들지 않고 가로 스크롤된다. */}
           <table className="w-full min-w-[724px] table-fixed text-sm">
             <colgroup>
-              <col />
-              <col className="w-[130px]" />
-              <col className="w-16" />
-              <col className="w-[140px]" />
-              <col className="w-[110px]" />
-              <col className="w-20" />
+              <col className="w-[20%]" />
+              <col className="w-[16%]" />
+              <col className="w-[16%]" />
+              <col className="w-[16%]" />
+              <col className="w-[16%]" />
+              <col className="w-[16%]" />
             </colgroup>
             <thead className="sticky top-0 bg-muted text-xs text-muted-foreground">
               <tr>
