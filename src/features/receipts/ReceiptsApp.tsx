@@ -14,12 +14,14 @@ import { readWorkbookFromFile, type RawSheet, type RawWorkbook } from './lib/exc
 import { detectSheetKind } from './lib/detectKind'
 import { detectDirectionFromFileName, parseTaxInvoiceRows } from './lib/parseTaxInvoice'
 import { mergeTaxInvoiceRows } from './lib/mergeTaxInvoiceRows'
+import { detectTaxInvoiceOutputSheet, parseTaxInvoiceOutputRows } from './lib/parseTaxInvoiceOutput'
+import { mergeTaxInvoiceOutputRows } from './lib/mergeTaxInvoiceOutputRows'
 import { groupTaxInvoiceRowsByMonth } from './lib/groupTaxInvoiceByMonth'
 import { groupReceiptsByMonth } from './lib/groupReceiptsByMonth'
 import { groupReceiptsByCard, parseReceiptRows, type ReceiptEntry } from './lib/parseReceipt'
 import { applyReceiptMapping, parseReceiptMappingSheet } from './lib/parseReceiptMapping'
 import { DEFAULT_CARD_MASTER } from './data/cardMaster'
-import type { ReceiptRow, TaxInvoiceRow } from './types/tables'
+import type { ReceiptRow, TaxInvoiceDirection, TaxInvoiceRow } from './types/tables'
 import { usePersistentState } from './lib/storage'
 import { applyReceiptRowUpdate, applyTaxInvoiceRowUpdate, renumber } from './lib/applyRowUpdate'
 import { applyAccountCodeAutofillBatch } from './lib/repeatTransaction'
@@ -110,6 +112,10 @@ export default function ReceiptsApp() {
   // 카드 뒷자리 4개인, 현장명/내역을 사람이 채워넣은 파일을 매칭 전용으로 올리는 숨김 입력이다
   // (상단 FileDropzone의 원본 카드사 파일 업로드와는 별개의 기능).
   const receiptUploadInputRef = useRef<HTMLInputElement>(null)
+  // 세금계산서(매출/매입) 모달 안 "엑셀" 드롭다운의 "엑셀 업로드" 메뉴용 숨김 입력 — 이 앱의 다운로드 양식
+  // ("세금계산서,계산서(YYYY_MM).xlsx")을 다시 올려 모달의 데이터 셀에 반영한다.
+  const salesUploadInputRef = useRef<HTMLInputElement>(null)
+  const purchaseUploadInputRef = useRef<HTMLInputElement>(null)
 
   const receiptGrouping = useMemo(
     () => groupReceiptsByCard(receiptEntries, cardMaster),
@@ -557,6 +563,44 @@ export default function ReceiptsApp() {
     setReceiptEntries(current)
   }
 
+  // 세금계산서 모달의 "엑셀 업로드" — 다운로드 양식과 같은 형식의 파일에서 해당 방향(매출/매입) 시트만 골라
+  // 기존 행과 매칭해 엑셀 값으로 덮어쓰고(엑셀 우선), 매칭되지 않는 행은 새로 추가한다. 확정된 달은 제외한다.
+  async function handleTaxInvoiceOutputUpload(files: File[], direction: TaxInvoiceDirection) {
+    const label = direction === 'sales' ? '매출' : '매입'
+    let current = direction === 'sales' ? salesRows : purchaseRows
+    const confirmedMonths = direction === 'sales' ? salesConfirmedMonths : purchaseConfirmedMonths
+    for (const file of files) {
+      let workbook: RawWorkbook
+      try {
+        workbook = await readWorkbookFromFile(file)
+      } catch (e) {
+        addError(e instanceof Error ? e.message : `"${file.name}" 파일을 읽는 중 오류가 발생했습니다.`)
+        continue
+      }
+
+      const incoming = workbook.sheets.flatMap((sheet) => {
+        const detected = detectTaxInvoiceOutputSheet(sheet.rows)
+        if (!detected || detected.direction !== direction) return []
+        return parseTaxInvoiceOutputRows(sheet.rows, detected.headerRowIndex, direction, 1)
+      })
+      if (incoming.length === 0) {
+        addError(
+          `"${file.name}"에서 ${label}세금계산서 시트를 찾을 수 없습니다. "엑셀 다운"으로 받은 양식과 같은 형식(번호/작성일자/${direction === 'sales' ? '공급받는자' : '공급자'} 사업자등록번호/.../세액 헤더)인지 확인해주세요.`,
+        )
+        continue
+      }
+
+      const result = mergeTaxInvoiceOutputRows(current, incoming, confirmedMonths)
+      current = result.rows
+      const skipped = result.skippedLockedCount > 0 ? `, 확정된 달이라 제외 ${result.skippedLockedCount}건` : ''
+      addNotice(
+        `"${file.name}" ${label} 업로드 결과 — 기존 행 갱신 ${result.updatedCount}건, 새 행 추가 ${result.addedCount}건${skipped}.`,
+      )
+    }
+    if (direction === 'sales') setSalesRows(current)
+    else setPurchaseRows(current)
+  }
+
   const salesColumns = useMemo(
     () =>
       createTaxInvoiceColumns({
@@ -738,7 +782,29 @@ export default function ReceiptsApp() {
             searchPlaceholder="거래처명/품목명/계정과목 검색..."
             toolbarExtra={
               <>
-                <Button onClick={handleDownloadSales}>엑셀 다운</Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger className={buttonVariants({ variant: 'default', size: 'default' })}>
+                    엑셀
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleDownloadSales}>엑셀 다운</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => salesUploadInputRef.current?.click()}>
+                      엑셀 업로드
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <input
+                  ref={salesUploadInputRef}
+                  type="file"
+                  accept=".xls,.xlsx"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0)
+                      handleTaxInvoiceOutputUpload(Array.from(e.target.files), 'sales')
+                    e.target.value = ''
+                  }}
+                />
                 {effectiveSalesMonthFilter !== 'all' && (
                   <>
                     <span
@@ -815,7 +881,29 @@ export default function ReceiptsApp() {
             searchPlaceholder="거래처명/품목명/계정과목/세부내역 검색..."
             toolbarExtra={
               <>
-                <Button onClick={handleDownloadPurchase}>엑셀 다운</Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger className={buttonVariants({ variant: 'default', size: 'default' })}>
+                    엑셀
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleDownloadPurchase}>엑셀 다운</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => purchaseUploadInputRef.current?.click()}>
+                      엑셀 업로드
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <input
+                  ref={purchaseUploadInputRef}
+                  type="file"
+                  accept=".xls,.xlsx"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0)
+                      handleTaxInvoiceOutputUpload(Array.from(e.target.files), 'purchase')
+                    e.target.value = ''
+                  }}
+                />
                 {effectivePurchaseMonthFilter !== 'all' && (
                   <>
                     <span
