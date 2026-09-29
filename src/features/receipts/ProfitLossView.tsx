@@ -210,7 +210,7 @@ export default function ProfitLossView({
       )}
 
       <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3 text-sm">
-        <PillGroup
+        <SelectField
           label="조회 단위"
           value={mode}
           options={[
@@ -220,22 +220,14 @@ export default function ProfitLossView({
           onChange={setMode}
         />
         {isMonthly && (
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted-foreground">연도</span>
-            <select
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              className="h-8 w-28 rounded-md border border-input bg-transparent px-2 text-sm"
-            >
-              {yearsDesc.map((y) => (
-                <option key={y} value={y}>
-                  {y}년
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectField
+            label="연도"
+            value={year}
+            options={yearsDesc.map((y) => [y, `${y}년`] as [string, string])}
+            onChange={setYear}
+          />
         )}
-        <PillGroup
+        <SelectField
           label="표시"
           value={showRatio ? 'ratio' : 'amount'}
           options={[
@@ -243,12 +235,13 @@ export default function ProfitLossView({
             ['ratio', '매출 대비 %'],
           ]}
           onChange={(v) => setShowRatio(v === 'ratio')}
+          widthClass="w-36"
         />
-        <div className="ml-auto flex gap-2">
-          <Button variant="outline" onClick={() => setManualOpen(true)} className="h-8 px-4 py-0">
+        <div className="ml-auto mr-2 flex gap-2">
+          <Button variant="outline" onClick={() => setManualOpen(true)} className="px-4 py-1">
             수기 항목 {manual.length > 0 && `(${manual.length})`}
           </Button>
-          <Button onClick={handleDownload} className="h-8 px-4 py-0">
+          <Button onClick={handleDownload} className="px-4 py-1">
             엑셀 다운
           </Button>
         </div>
@@ -369,36 +362,38 @@ function rowHasChildren(rows: DisplayRow[], row: DisplayRow): boolean {
   return rows.some((r) => r.parentKeys.includes(row.collapseKey!))
 }
 
-function PillGroup<T extends string>({
+// 월별 세금계산서 화면의 '검색 조건' 선택 상자와 같은 모양의 드롭다운.
+function SelectField<T extends string>({
   label,
   value,
   options,
   onChange,
+  widthClass = 'w-32',
 }: {
   label: string
   value: T
   options: [T, string][]
   onChange: (value: T) => void
+  widthClass?: string
 }) {
   return (
-    <div className="flex flex-col gap-1">
+    <label className="flex flex-col gap-1">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="flex items-center gap-1">
-        {options.map(([v, text]) => (
-          <button
-            type="button"
-            key={v}
-            onClick={() => onChange(v)}
-            className={cn(
-              'h-8 whitespace-nowrap rounded-full border px-3 text-sm transition-colors',
-              value === v ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-transparent hover:bg-muted',
-            )}
-          >
-            {text}
-          </button>
-        ))}
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value as T)}
+          className={cn('appearance-none rounded-md border border-input bg-transparent py-1 pl-3 pr-8', widthClass)}
+        >
+          {options.map(([v, text]) => (
+            <option key={v} value={v}>
+              {text}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       </div>
-    </div>
+    </label>
   )
 }
 
