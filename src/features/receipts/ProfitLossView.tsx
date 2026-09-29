@@ -13,10 +13,12 @@ import {
   availableYears,
   flattenProfitLoss,
   monthlyProfitLoss,
+  monthsBetween,
+  periodLabel,
+  periodProfitLoss,
   ratioOf,
   rowSourceItems,
   SECTION_LABEL,
-  singleMonthProfitLoss,
   SOURCE_KIND_LABEL,
   yearlyProfitLoss,
   type DisplayRow,
@@ -26,10 +28,10 @@ import {
 } from './lib/profitLoss'
 import type { ReceiptCardRowDTO, TaxInvoiceRowDTO } from '@/app/receipts/actions'
 
-type ViewMode = 'yearly' | 'monthly'
+type ViewMode = 'yearly' | 'period'
 
 const MONTH_NUMBERS = Array.from({ length: 12 }, (_, i) => i + 1)
-// 표는 열이 적어(연도별은 연도 수, 월별은 한 달) 전체 너비로 늘리면 항목과 금액 사이가 너무 벌어진다 —
+// 표는 열이 적어(연도별은 연도 수, 기간은 합계 한 열) 전체 너비로 늘리면 항목과 금액 사이가 너무 벌어진다 —
 // 열 개수만큼의 고정 폭(px)을 쓴다.
 const LABEL_WIDTH = 240
 const COLUMN_WIDTH = 160
@@ -43,21 +45,19 @@ interface ProfitLossViewProps {
   currentMonth: string // 'YYYY-MM' (한국시간)
 }
 
-// 셀 클릭 시 상세 모달 대상 — 그 행의 해당 연도 월별 금액과 원천 자료를 보여준다. month가 null이면 연간 전체.
-// singleMonth면(월별 조회) 월별 금액 띠 없이 그 달 원천 자료만 보여준다.
-interface DetailTarget {
-  rowKey: string
-  year: string
-  month: number | null // 0~11
-  singleMonth: boolean
-}
+// 셀 클릭 시 상세 모달 대상. 연도별은 그 행의 해당 연도 월별 금액 띠와 원천 자료를, 기간은 월별 띠 없이
+// 기간 합계와 그 기간 원천 자료만 보여준다.
+type DetailTarget = { rowKey: string } & (
+  | { kind: 'year'; year: string }
+  | { kind: 'period'; start: string; end: string } // 'YYYY-MM'
+)
 
 type ConfirmStatus = 'confirmed' | 'partial' | 'none'
 
 const CONFIRM_CATEGORY_LABELS = ['매출', '매입', '영수증'] as const
 
 // 확정된 매출/매입 세금계산서·카드 영수증을 모아 손익계산서를 보여주는 조회 화면. 기본은 연도별이고
-// 월별로 전환하면 선택한 한 달의 손익만 보여준다. 서버 액션이 revalidate하면 props가 새로 내려오므로 집계는 props에서 매번 다시 계산한다.
+// 기간으로 전환하면 시작~종료 월을 합친 손익 한 열을 보여준다(한 달만 보려면 같은 달로). 서버 액션이 revalidate하면 props가 새로 내려오므로 집계는 props에서 매번 다시 계산한다.
 export default function ProfitLossView({
   sales,
   purchases,
@@ -74,7 +74,7 @@ export default function ProfitLossView({
   const yearsDesc = useMemo(() => availableYears(data, currentYear), [data, currentYear])
   const yearsAsc = useMemo(() => [...yearsDesc].reverse(), [yearsDesc])
 
-  // 데이터가 있는 가장 최근 달(없으면 이번 달) — 월별 조회의 처음 선택 달이자 수기 항목 창을 여는 달.
+  // 데이터가 있는 가장 최근 달(없으면 이번 달) — 기간 조회의 처음 시작/종료 달이자 수기 항목 창을 여는 달.
   const defaultManualMonth = useMemo(() => {
     const keys = [
       ...sales.map((r) => r.writtenDate),
@@ -88,18 +88,18 @@ export default function ProfitLossView({
   }, [sales, purchases, receipts, manual, currentMonth])
 
   const [mode, setMode] = useState<ViewMode>('yearly')
-  const [year, setYear] = useState(() => defaultManualMonth.slice(0, 4))
-  const [month, setMonth] = useState(() => defaultManualMonth.slice(5, 7)) // 'MM'
+  const [startMonth, setStartMonth] = useState(defaultManualMonth)
+  const [endMonth, setEndMonth] = useState(defaultManualMonth)
+  const [appliedRange, setAppliedRange] = useState({ start: defaultManualMonth, end: defaultManualMonth })
   const [showRatio, setShowRatio] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [detail, setDetail] = useState<DetailTarget | null>(null)
   const [manualOpen, setManualOpen] = useState(false)
 
-  const isMonthly = mode === 'monthly'
-  const monthKey = `${year}-${month}`
+  const isPeriod = mode === 'period'
   const pl = useMemo(
-    () => (isMonthly ? singleMonthProfitLoss(data, monthKey) : yearlyProfitLoss(data, yearsAsc)),
-    [isMonthly, data, monthKey, yearsAsc],
+    () => (isPeriod ? periodProfitLoss(data, appliedRange.start, appliedRange.end) : yearlyProfitLoss(data, yearsAsc)),
+    [isPeriod, data, appliedRange, yearsAsc],
   )
   const rows = useMemo(() => flattenProfitLoss(pl), [pl])
   const visibleRows = rows.filter((r) => !r.parentKeys.some((k) => collapsed.has(k)))
@@ -107,8 +107,9 @@ export default function ProfitLossView({
   const unclassified = pl.sections.UNCLASSIFIED
   const unclassifiedCount = unclassified.lines.reduce((s, l) => s + l.items.length, 0)
 
-  // 요약 카드: 월별은 선택한 달, 연도별은 가장 최근 연도 값(둘 다 마지막 열).
-  const cardPeriod = isMonthly ? `${year}년 ${Number(month)}월` : `${yearsAsc[yearsAsc.length - 1]}년`
+  // 요약 카드: 기간은 조회한 기간 합계, 연도별은 가장 최근 연도 값(둘 다 마지막 열).
+  const rangeLabel = periodLabel(appliedRange.start, appliedRange.end)
+  const cardPeriod = isPeriod ? rangeLabel : `${yearsAsc[yearsAsc.length - 1]}년`
   const cardValue = (series: Series) => series.values[series.values.length - 1]
 
   const confirmedSets = useMemo(
@@ -122,12 +123,11 @@ export default function ProfitLossView({
       const status: ConfirmStatus = missing.length === 0 ? 'confirmed' : missing.length === 3 ? 'none' : 'partial'
       return { status, tooltip: missing.length === 0 ? '매출·매입·영수증 모두 확정' : `${missing.join('·')} 미확정` }
     }
-    if (isMonthly) {
-      return pl.columns.map((key) => ({ label: `${Number(key.slice(5, 7))}월`, ...monthStatus(key) }))
-    }
-    // 연도별: 지나간 달(이번 달까지)만 보고, 전부 확정이면 확정, 하나도 없으면 미확정, 그 외 일부 미확정.
-    return pl.columns.map((y) => {
-      const months = MONTH_NUMBERS.map((m) => `${y}-${String(m).padStart(2, '0')}`).filter((k) => k <= currentMonth)
+    // 열에 속한 달 중 지나간 달(이번 달까지)만 보고, 전부 확정이면 확정, 하나도 없으면 미확정, 그 외 일부 미확정.
+    // 한 달짜리 기간은 그 달의 매출·매입·영수증 중 무엇이 미확정인지 알려준다.
+    const columnStatus = (label: string, allMonths: string[]) => {
+      if (allMonths.length === 1) return { label, ...monthStatus(allMonths[0]) }
+      const months = allMonths.filter((k) => k <= currentMonth)
       const statuses = months.map(monthStatus)
       const confirmedMonthsLabel = months
         .filter((_, i) => statuses[i].status === 'confirmed')
@@ -139,9 +139,16 @@ export default function ProfitLossView({
             ? 'none'
             : 'partial'
       const tooltip = confirmedMonthsLabel.length > 0 ? `확정 완료: ${confirmedMonthsLabel.join(', ')}` : '확정된 달 없음'
-      return { label: `${y}년`, status, tooltip }
-    })
-  }, [isMonthly, pl.columns, confirmedSets, currentMonth])
+      return { label, status, tooltip }
+    }
+    if (isPeriod) return [columnStatus(rangeLabel, monthsBetween(appliedRange.start, appliedRange.end))]
+    return pl.columns.map((y) =>
+      columnStatus(
+        `${y}년`,
+        MONTH_NUMBERS.map((m) => `${y}-${String(m).padStart(2, '0')}`),
+      ),
+    )
+  }, [isPeriod, pl.columns, confirmedSets, currentMonth, rangeLabel, appliedRange])
 
   const accountSuggestions = useMemo(
     () => [...new Set(rows.filter((r) => r.kind === 'line').map((r) => r.label))],
@@ -157,14 +164,25 @@ export default function ProfitLossView({
     })
   }
 
-  function openDetail(row: DisplayRow, columnIndex: number | null) {
-    if (columnIndex === null) return
-    if (isMonthly) setDetail({ rowKey: row.key, year, month: Number(month) - 1, singleMonth: true })
-    else setDetail({ rowKey: row.key, year: pl.columns[columnIndex], month: null, singleMonth: false })
+  function openDetail(row: DisplayRow, columnIndex: number) {
+    if (isPeriod) setDetail({ rowKey: row.key, kind: 'period', ...appliedRange })
+    else setDetail({ rowKey: row.key, kind: 'year', year: pl.columns[columnIndex] })
+  }
+
+  function handleSearch() {
+    if (!startMonth || !endMonth) {
+      window.alert('기간(시작)과 기간(종료)를 모두 입력해 주세요.')
+      return
+    }
+    if (startMonth > endMonth) {
+      window.alert('기간(시작)이 기간(종료)보다 늦어요. 기간을 다시 확인해 주세요.')
+      return
+    }
+    setAppliedRange({ start: startMonth, end: endMonth })
   }
 
   function handleDownload() {
-    downloadProfitLossWorkbook(pl, isMonthly ? { kind: 'monthly', month: monthKey } : { kind: 'yearly' }).catch((e) =>
+    downloadProfitLossWorkbook(pl, isPeriod ? { kind: 'period', ...appliedRange } : { kind: 'yearly' }).catch((e) =>
       window.alert(e instanceof Error ? e.message : '다운로드 중 오류가 발생했습니다.'),
     )
   }
@@ -182,8 +200,8 @@ export default function ProfitLossView({
       <div className="mb-6">
         <h1 className="text-xl font-semibold">손익계산서</h1>
         <p className="text-sm text-muted-foreground">
-          확정된 세금계산서·영수증과 수기 항목으로 손익을 계산해요. 연도별로 보거나, 월별로 한 달씩 볼 수 있고, 금액
-          칸을 누르면 근거 자료를 확인할 수 있어요.
+          확정된 세금계산서·영수증과 수기 항목으로 손익을 계산해요. 연도별로 비교하거나, 기간을 정해 그 기간 합계를
+          볼 수 있어요(한 달만 보려면 시작과 종료를 같은 달로). 금액 칸을 누르면 근거 자료를 확인할 수 있어요.
         </p>
       </div>
 
@@ -222,26 +240,19 @@ export default function ProfitLossView({
           value={mode}
           options={[
             ['yearly', '연도별'],
-            ['monthly', '월별'],
+            ['period', '기간'],
           ]}
           onChange={setMode}
         />
-        {isMonthly && (
-          <SelectField
-            label="연도"
-            value={year}
-            options={yearsDesc.map((y) => [y, `${y}년`] as [string, string])}
-            onChange={setYear}
-          />
-        )}
-        {isMonthly && (
-          <SelectField
-            label="월"
-            value={month}
-            options={MONTH_NUMBERS.map((m) => [String(m).padStart(2, '0'), `${m}월`] as [string, string])}
-            onChange={setMonth}
-            widthClass="w-24"
-          />
+        {isPeriod && (
+          <>
+            <MonthField label="기간(시작)" value={startMonth} onChange={setStartMonth} />
+            <span className="pb-1.5">~</span>
+            <MonthField label="기간(종료)" value={endMonth} onChange={setEndMonth} />
+            <Button onClick={handleSearch} className="px-4 py-1">
+              조회
+            </Button>
+          </>
         )}
         <SelectField
           label="표시"
@@ -336,7 +347,7 @@ export default function ProfitLossView({
 
       {detail && (
         <SourceDetailModal
-          key={`${detail.rowKey}|${detail.year}|${detail.month}`}
+          key={`${detail.rowKey}|${detail.kind === 'period' ? `${detail.start}~${detail.end}` : detail.year}`}
           target={detail}
           data={data}
           showRatio={showRatio}
@@ -390,6 +401,21 @@ function SelectField<T extends string>({
         </select>
         <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       </div>
+    </label>
+  )
+}
+
+// 월별 세금계산서 화면의 '기간' 입력칸과 같은 모양의 월 선택 상자.
+function MonthField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <input
+        type="month"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-md border border-input bg-transparent px-2 py-1"
+      />
     </label>
   )
 }
@@ -469,8 +495,16 @@ function SourceDetailModal({
   showRatio: boolean
   onClose: () => void
 }) {
-  const [monthFilter, setMonthFilter] = useState<number | null>(target.month)
-  const monthlyPl = useMemo(() => monthlyProfitLoss(data, target.year), [data, target.year])
+  const isPeriod = target.kind === 'period'
+  const [monthFilter, setMonthFilter] = useState<number | null>(null)
+  // 연도별은 그 연도 1~12월 열, 기간은 기간 합계 한 열로 다시 집계한다.
+  const monthlyPl = useMemo(
+    () =>
+      target.kind === 'period'
+        ? periodProfitLoss(data, target.start, target.end)
+        : monthlyProfitLoss(data, target.year),
+    [data, target],
+  )
   const row = useMemo(
     () => flattenProfitLoss(monthlyPl).find((r) => r.key === target.rowKey),
     [monthlyPl, target.rowKey],
@@ -481,13 +515,11 @@ function SourceDetailModal({
   const showAccount = row.kind === 'section' || row.kind === 'group'
   const monthRevenue = monthlyPl.sections.REVENUE.values
   const allItems = isProfit ? [] : rowSourceItems(monthlyPl, row)
-  const monthKey = monthFilter === null ? null : monthlyPl.columns[monthFilter]
+  const monthKey = isPeriod || monthFilter === null ? null : monthlyPl.columns[monthFilter]
   const items = monthKey === null ? allItems : allItems.filter((it) => it.monthKey === monthKey)
   const total = items.reduce((s, it) => s + it.amount, 0)
   const sectionLabel = row.kind === 'line' && row.section ? `${SECTION_LABEL[row.section]} · ` : ''
-  const singleMonth = target.singleMonth && target.month !== null
-  const periodLabel = singleMonth ? `${target.year}년 ${target.month! + 1}월` : `${target.year}년`
-  const monthValue = singleMonth ? row.values[target.month!] : row.total
+  const titlePeriod = target.kind === 'period' ? periodLabel(target.start, target.end) : `${target.year}년`
   const format = (v: number, rev: number) => {
     if (showRatio) {
       const ratio = ratioOf(v, rev)
@@ -497,12 +529,12 @@ function SourceDetailModal({
   }
 
   return (
-    <Modal title={`${periodLabel} · ${sectionLabel}${row.label}`} onClose={onClose}>
-      {singleMonth ? (
+    <Modal title={`${titlePeriod} · ${sectionLabel}${row.label}`} onClose={onClose}>
+      {isPeriod ? (
         <div className="mb-4 flex items-baseline gap-2 text-sm">
-          <span className="text-muted-foreground">{periodLabel} 금액</span>
-          <span className={cn('text-base font-semibold tabular-nums', monthValue < 0 && 'text-destructive')}>
-            {format(monthValue, monthRevenue[target.month!])}
+          <span className="text-muted-foreground">{titlePeriod} 금액</span>
+          <span className={cn('text-base font-semibold tabular-nums', row.total < 0 && 'text-destructive')}>
+            {format(row.total, monthlyPl.sections.REVENUE.total)}
           </span>
         </div>
       ) : (
@@ -563,8 +595,8 @@ function SourceDetailModal({
       ) : (
         <>
           <p className="mb-2 text-sm text-muted-foreground">
-            {singleMonth
-              ? `${periodLabel} 자료예요.`
+            {isPeriod
+              ? `${titlePeriod} 자료예요.`
               : monthFilter === null
                 ? '연간 전체 자료예요. 위의 월 칸을 누르면 그 달 자료만 볼 수 있어요.'
                 : `${monthFilter + 1}월 자료예요. 같은 칸이나 합계를 다시 누르면 연간 전체로 돌아가요.`}{' '}

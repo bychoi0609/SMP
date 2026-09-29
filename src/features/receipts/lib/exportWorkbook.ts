@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs'
 import type { TaxInvoiceRow } from '../types/tables'
 import type { ReceiptSheet } from './parseReceipt'
-import { flattenProfitLoss, type ProfitLoss } from './profitLoss'
+import { flattenProfitLoss, periodLabel, type ProfitLoss } from './profitLoss'
 
 // 다운로드 양식은 samples/세금계산서,계산서(출력양식).xlsx 를 그대로 따른다 —
 // 제목 행/회사명/병합 헤더/글꼴·색상·테두리·정렬/숫자·날짜 서식/합계(SUM) 행/열 너비까지 실제 사용 파일과 동일하게 맞춘다.
@@ -427,19 +427,18 @@ export async function downloadReceiptWorkbook(sheets: ReceiptSheet[]): Promise<v
 }
 
 // 손익계산서 — 화면 표와 같은 행 구성(flattenProfitLoss)을 모든 줄을 펼친 상태로 내보낸다.
-// 연도별(열 = 연도)과 월별(열 = 선택한 한 달) 두 가지 모드를 지원한다. 둘 다 합계 열은 없다.
+// 연도별(열 = 연도)과 기간(열 = 선택 기간 합계 하나) 두 가지 모드를 지원한다.
 const PROFIT_LOSS_WIDTH_LABEL = 24
 const PROFIT_LOSS_WIDTH_AMOUNT = 13
 const PROFIT_LOSS_BOLD_FONT: Partial<ExcelJS.Font> = { ...FONT, bold: true }
 
-export type ProfitLossExportMode = { kind: 'yearly' } | { kind: 'monthly'; month: string } // month: 'YYYY-MM'
+export type ProfitLossExportMode = { kind: 'yearly' } | { kind: 'period'; start: string; end: string } // 'YYYY-MM'
 
 function buildProfitLossWorkbook(pl: ProfitLoss, mode: ProfitLossExportMode): ExcelJS.Workbook {
-  const isMonthly = mode.kind === 'monthly'
-  const title = isMonthly
-    ? `손익계산서(${mode.month.slice(0, 4)}년 ${Number(mode.month.slice(5, 7))}월)`
-    : '손익계산서(연도별)'
-  const columnLabels = pl.columns.map((c) => (isMonthly ? `${Number(c.slice(5, 7))}월` : `${c}년`))
+  const isPeriod = mode.kind === 'period'
+  const label = isPeriod ? periodLabel(mode.start, mode.end) : ''
+  const title = isPeriod ? `손익계산서(${label})` : '손익계산서(연도별)'
+  const columnLabels = pl.columns.map((c) => (isPeriod ? label : `${c}년`))
   const headers = ['항목', ...columnLabels]
   const lastCol = headers.length
 
@@ -499,6 +498,7 @@ function buildProfitLossWorkbook(pl: ProfitLoss, mode: ProfitLossExportMode): Ex
 }
 
 export async function downloadProfitLossWorkbook(pl: ProfitLoss, mode: ProfitLossExportMode): Promise<void> {
-  const period = mode.kind === 'monthly' ? mode.month : '연도별'
+  const period =
+    mode.kind === 'period' ? (mode.start === mode.end ? mode.start : `${mode.start}~${mode.end}`) : '연도별'
   await triggerDownload(buildProfitLossWorkbook(pl, mode), `손익계산서_${period}_${todayFileStamp()}.xlsx`)
 }

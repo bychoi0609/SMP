@@ -260,9 +260,35 @@ export function monthlyProfitLoss(data: ProfitLossSourceData, year: string): Pro
   return buildProfitLoss(data, columns, (d) => monthIndexOf(d, year))
 }
 
-// 선택한 한 달('YYYY-MM')만의 열 하나.
-export function singleMonthProfitLoss(data: ProfitLossSourceData, monthKey: string): ProfitLoss {
-  return buildProfitLoss(data, [monthKey], (d) => (d.slice(0, 7) === monthKey ? 0 : -1))
+// 기간(시작~종료 'YYYY-MM', 양끝 포함)을 합친 열 하나. 한 달만 보려면 시작과 종료를 같은 달로 준다.
+export function periodProfitLoss(data: ProfitLossSourceData, start: string, end: string): ProfitLoss {
+  return buildProfitLoss(data, [`${start}~${end}`], (d) => {
+    const month = d.slice(0, 7)
+    return month >= start && month <= end ? 0 : -1
+  })
+}
+
+// 'YYYY-MM' 두 개 사이(양끝 포함)의 월 키 목록.
+export function monthsBetween(start: string, end: string): string[] {
+  const months: string[] = []
+  let [y, m] = start.split('-').map(Number)
+  while (true) {
+    const key = `${y}-${String(m).padStart(2, '0')}`
+    if (key > end) break
+    months.push(key)
+    m += 1
+    if (m > 12) {
+      m = 1
+      y += 1
+    }
+  }
+  return months
+}
+
+// 기간 표시용 이름 — 한 달이면 '2026년 8월', 여러 달이면 '2026.01~2026.08'.
+export function periodLabel(start: string, end: string): string {
+  if (start === end) return `${start.slice(0, 4)}년 ${Number(start.slice(5, 7))}월`
+  return `${start.replace('-', '.')}~${end.replace('-', '.')}`
 }
 
 // 연도별 열(years는 오름차순 'YYYY' 목록).
