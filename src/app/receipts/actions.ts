@@ -77,6 +77,7 @@ export async function confirmTaxInvoiceMonthAction(
   revalidatePath("/receipts")
   revalidatePath("/receipts/monthly-invoices")
   revalidatePath("/receipts/outstanding")
+  revalidatePath("/receipts/profit-loss")
   return {}
 }
 
@@ -97,6 +98,7 @@ export async function unconfirmTaxInvoiceMonthAction(
   revalidatePath("/receipts")
   revalidatePath("/receipts/monthly-invoices")
   revalidatePath("/receipts/outstanding")
+  revalidatePath("/receipts/profit-loss")
   return {}
 }
 
@@ -163,6 +165,7 @@ export async function confirmReceiptCardMonthAction(
   ])
   revalidatePath("/receipts")
   revalidatePath("/receipts/monthly-receipts")
+  revalidatePath("/receipts/profit-loss")
   return {}
 }
 
@@ -177,6 +180,7 @@ export async function unconfirmReceiptCardMonthAction(billingYearMonth: string):
   ])
   revalidatePath("/receipts")
   revalidatePath("/receipts/monthly-receipts")
+  revalidatePath("/receipts/profit-loss")
   return {}
 }
 
@@ -280,5 +284,6 @@ export async function setConfirmedTaxInvoicePaymentDateAction(
   revalidatePath("/receipts")
   revalidatePath("/receipts/monthly-invoices")
   revalidatePath("/receipts/outstanding")
+  revalidatePath("/receipts/profit-loss")
   return result
 }

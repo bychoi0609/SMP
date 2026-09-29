@@ -62,6 +62,12 @@ const RECEIPTS_SECTIONS = [
     description: "결제일이 비어 있는 외상매출금·외상매입금·미지급금을 거래처별로 확인합니다.",
     ready: true,
   },
+  {
+    href: "/receipts/profit-loss",
+    title: "손익계산서",
+    description: "연도별·월별 매출·원가·판관비·이익을 확인합니다.",
+    ready: true,
+  },
 ]
 
 function SectionGroup({

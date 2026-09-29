@@ -359,3 +359,34 @@ model ReceiptDraftState {
 
   @@map("receipt_draft_state")
 }
+
+// ── 월별 손익계산서 수기 항목 ─────────────────────────────────────────────
+// 세금계산서/영수증이 없는 비용·수익(급여, 4대보험, 감가상각, 이자, 재고 조정 등)을 귀속월 단위로
+// 직접 입력해 손익계산서 자동 집계 값에 더한다. 금액은 음수도 허용(재고 조정 등).
+
+enum ProfitLossSection {
+  REVENUE // 매출액
+  CONSTRUCTION_COST // 공사원가
+  MANUFACTURING_COST // 제조원가
+  MERCHANDISE_COST // 상품원가
+  SGA // 판매관리비
+  NON_OPERATING_INCOME // 영업외수익
+  NON_OPERATING_EXPENSE // 영업외비용
+
+  @@map("profit_loss_section")
+}
+
+model ProfitLossManualEntry {
+  id               Int               @id @default(autoincrement())
+  billingYearMonth String // 'YYYY-MM'
+  section          ProfitLossSection
+  accountCode      String // 계정과목 (예: 급여, 감가상각비)
+  amount           Decimal
+  memo             String            @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([billingYearMonth])
+  @@map("profit_loss_manual_entry")
+}
