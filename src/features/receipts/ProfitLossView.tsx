@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import './receipts.css'
 import { Modal } from './components/Modal'
 import { ProfitLossManualPanel } from './components/ProfitLossManualPanel'
+import { ProfitLossSidePanel } from './components/ProfitLossSidePanel'
 import { Button } from './components/ui/button'
 import { downloadProfitLossWorkbook } from './lib/exportWorkbook'
 import { formatNumber } from './lib/format'
@@ -31,10 +32,10 @@ import type { ReceiptCardRowDTO, TaxInvoiceRowDTO } from '@/app/receipts/actions
 type ViewMode = 'yearly' | 'period'
 
 const MONTH_NUMBERS = Array.from({ length: 12 }, (_, i) => i + 1)
-// 표는 열이 적어(연도별은 연도 수, 기간은 합계 한 열) 전체 너비로 늘리면 항목과 금액 사이가 너무 벌어진다 —
-// 열 개수만큼의 고정 폭(px)을 쓴다.
+// 화면 전체를 max-w-[1280px] 안에 가운데 정렬하고, 표(왼쪽)와 보조 패널(오른쪽)을 나란히 둔다. 표는 제 칸을
+// 채우되 연도가 많아지면 금액 열이 COLUMN_WIDTH 밑으로 줄지 않고 가로 스크롤된다(억 단위 금액이 잘리지 않게).
 const LABEL_WIDTH = 240
-const COLUMN_WIDTH = 160
+const COLUMN_WIDTH = 170
 
 interface ProfitLossViewProps {
   sales: TaxInvoiceRowDTO[]
@@ -111,6 +112,12 @@ export default function ProfitLossView({
   const rangeLabel = periodLabel(appliedRange.start, appliedRange.end)
   const cardPeriod = isPeriod ? rangeLabel : `${yearsAsc[yearsAsc.length - 1]}년`
   const cardValue = (series: Series) => series.values[series.values.length - 1]
+  const latestYear = yearsAsc[yearsAsc.length - 1]
+  const panelScope = useMemo(
+    () =>
+      isPeriod ? ({ kind: 'period', ...appliedRange } as const) : ({ kind: 'year', year: latestYear } as const),
+    [isPeriod, appliedRange, latestYear],
+  )
 
   const confirmedSets = useMemo(
     () => [new Set(confirmedMonths.sales), new Set(confirmedMonths.purchase), new Set(confirmedMonths.receipt)],
@@ -196,7 +203,7 @@ export default function ProfitLossView({
   }
 
   return (
-    <div className="receipts-scope app">
+    <div className="receipts-scope app mx-auto max-w-[1280px]">
       <div className="mb-6">
         <h1 className="text-xl font-semibold">손익계산서</h1>
         <p className="text-sm text-muted-foreground">
@@ -274,75 +281,83 @@ export default function ProfitLossView({
         </div>
       </div>
 
-      <div className="max-h-[70vh] w-fit max-w-full overflow-auto rounded-lg border bg-card">
-        {/* 억 단위 금액(예: 526,457,061)이 잘리지 않는 고정 폭으로 두고, 표 너비는 내용만큼만 쓴다. */}
-        <table
-          className="table-fixed border-separate border-spacing-0 text-[13px]"
-          style={{ width: LABEL_WIDTH + COLUMN_WIDTH * pl.columns.length }}
-        >
-          <colgroup>
-            <col style={{ width: LABEL_WIDTH }} />
-            {pl.columns.map((key) => (
-              <col key={key} style={{ width: COLUMN_WIDTH }} />
-            ))}
-          </colgroup>
-          <thead className="sticky top-0 z-10 bg-muted text-xs text-muted-foreground">
-            <tr>
-              <th className="sticky left-0 z-10 bg-muted px-3 py-1.5 text-left font-medium">항목</th>
-              {columnHeaders.map((h) => (
-                <th key={h.label} className="px-2 py-1.5 text-right font-medium">
-                  <div>{h.label}</div>
-                  <ConfirmBadge status={h.status} tooltip={h.tooltip} />
-                </th>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className="max-h-[75vh] overflow-auto rounded-xl border bg-card shadow-sm">
+          <table
+            className="w-full table-fixed border-separate border-spacing-0 text-[15px]"
+            style={{ minWidth: LABEL_WIDTH + COLUMN_WIDTH * pl.columns.length }}
+          >
+            <colgroup>
+              <col style={{ width: LABEL_WIDTH }} />
+              {pl.columns.map((key) => (
+                <col key={key} />
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.map((row) => {
-              const isLine = row.kind === 'line'
-              const isProfit = row.kind === 'profit'
-              const collapsible = row.collapseKey !== undefined && (row.kind === 'group' || rowHasChildren(rows, row))
-              const isCollapsed = row.collapseKey !== undefined && collapsed.has(row.collapseKey)
-              // 가로 스크롤 시 고정되는 항목 열도 같은 배경을 쓰므로 뒤 칸이 비치지 않게 불투명 색만 쓴다.
-              const rowBg = isProfit ? 'bg-accent' : isLine ? 'bg-card' : 'bg-muted'
-              return (
-                <tr key={row.key} className={cn(rowBg, !isLine && 'font-semibold', row.warning && 'text-warning-foreground')}>
-                  <td
-                    className={cn('sticky left-0 truncate border-t px-3 py-1.5', rowBg)}
-                    style={{ paddingLeft: `${12 + row.depth * 16}px` }}
-                  >
-                    {collapsible ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleCollapse(row.collapseKey!)}
-                        className="inline-flex items-center gap-1"
-                        aria-expanded={!isCollapsed}
-                      >
-                        {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                        {row.label}
-                      </button>
-                    ) : (
-                      <span className={cn(!isLine && 'pl-[18px]')}>{row.label}</span>
-                    )}
-                    {row.line?.hasManual && (
-                      <span className="ml-1.5 rounded-full border px-1.5 text-[10px] font-normal text-muted-foreground">
-                        수기
-                      </span>
-                    )}
-                  </td>
-                  {row.values.map((v, i) => (
-                    <AmountCell
-                      key={i}
-                      text={formatCell(v, revenue.values[i])}
-                      negative={v < 0}
-                      onClick={v !== 0 ? () => openDetail(row, i) : undefined}
-                    />
-                  ))}
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+            </colgroup>
+            <thead className="sticky top-0 z-10 bg-muted text-sm text-muted-foreground">
+              <tr>
+                <th className="sticky left-0 z-10 bg-muted px-5 py-3 text-left font-medium">항목</th>
+                {columnHeaders.map((h) => (
+                  <th key={h.label} className="px-5 py-3 text-right font-medium">
+                    <div>{h.label}</div>
+                    <ConfirmBadge status={h.status} tooltip={h.tooltip} />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.map((row) => {
+                const isLine = row.kind === 'line'
+                const isProfit = row.kind === 'profit'
+                const collapsible = row.collapseKey !== undefined && (row.kind === 'group' || rowHasChildren(rows, row))
+                const isCollapsed = row.collapseKey !== undefined && collapsed.has(row.collapseKey)
+                // 가로 스크롤 시 고정되는 항목 열도 같은 배경을 쓰므로 뒤 칸이 비치지 않게 불투명 색만 쓴다.
+                const rowBg = isProfit ? 'bg-accent' : isLine ? 'bg-card' : 'bg-muted'
+                return (
+                  <tr key={row.key} className={cn(rowBg, !isLine && 'font-semibold', row.warning && 'text-warning-foreground')}>
+                    <td
+                      className={cn('sticky left-0 truncate border-t px-5 py-2.5', rowBg)}
+                      style={{ paddingLeft: `${20 + row.depth * 20}px` }}
+                    >
+                      {collapsible ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleCollapse(row.collapseKey!)}
+                          className="inline-flex items-center gap-1"
+                          aria-expanded={!isCollapsed}
+                        >
+                          {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          {row.label}
+                        </button>
+                      ) : (
+                        <span className={cn(!isLine && 'pl-5')}>{row.label}</span>
+                      )}
+                      {row.line?.hasManual && (
+                        <span className="ml-1.5 rounded-full border px-1.5 text-[11px] font-normal text-muted-foreground">
+                          수기
+                        </span>
+                      )}
+                    </td>
+                    {row.values.map((v, i) => (
+                      <AmountCell
+                        key={i}
+                        text={formatCell(v, revenue.values[i])}
+                        negative={v < 0}
+                        onClick={v !== 0 ? () => openDetail(row, i) : undefined}
+                      />
+                    ))}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="lg:sticky lg:top-4">
+          <ProfitLossSidePanel
+            data={data}
+            scope={panelScope}
+            scopeLabel={cardPeriod}
+          />
+        </div>
       </div>
 
       {detail && (
@@ -441,7 +456,7 @@ function ConfirmBadge({ status, tooltip }: { status: ConfirmStatus; tooltip: str
   return (
     <div
       className={cn(
-        'text-[10px] font-normal',
+        'text-[11px] font-normal',
         status === 'confirmed' && 'text-primary',
         status === 'none' && 'text-muted-foreground/70',
         status === 'partial' && 'text-warning-foreground',
@@ -469,7 +484,7 @@ function AmountCell({
   return (
     <td
       className={cn(
-        'whitespace-nowrap border-t px-2 py-1.5 text-right tabular-nums',
+        'whitespace-nowrap border-t px-5 py-2.5 text-right tabular-nums',
         strong && 'font-semibold',
         negative && 'text-destructive',
         onClick && 'cursor-pointer hover:bg-muted hover:underline',
