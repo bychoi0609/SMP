@@ -16,6 +16,7 @@ import {
   ratioOf,
   rowSourceItems,
   SECTION_LABEL,
+  singleMonthProfitLoss,
   SOURCE_KIND_LABEL,
   yearlyProfitLoss,
   type DisplayRow,
@@ -28,9 +29,10 @@ import type { ReceiptCardRowDTO, TaxInvoiceRowDTO } from '@/app/receipts/actions
 type ViewMode = 'yearly' | 'monthly'
 
 const MONTH_NUMBERS = Array.from({ length: 12 }, (_, i) => i + 1)
-// 연도별 표는 열이 적어 전체 너비로 늘리면 항목과 금액 사이가 너무 벌어진다 — 열 개수만큼의 고정 폭(px)을 쓴다.
-const YEARLY_LABEL_WIDTH = 240
-const YEARLY_COLUMN_WIDTH = 160
+// 표는 열이 적어(연도별은 연도 수, 월별은 한 달) 전체 너비로 늘리면 항목과 금액 사이가 너무 벌어진다 —
+// 열 개수만큼의 고정 폭(px)을 쓴다.
+const LABEL_WIDTH = 240
+const COLUMN_WIDTH = 160
 
 interface ProfitLossViewProps {
   sales: TaxInvoiceRowDTO[]
@@ -42,10 +44,12 @@ interface ProfitLossViewProps {
 }
 
 // 셀 클릭 시 상세 모달 대상 — 그 행의 해당 연도 월별 금액과 원천 자료를 보여준다. month가 null이면 연간 전체.
+// singleMonth면(월별 조회) 월별 금액 띠 없이 그 달 원천 자료만 보여준다.
 interface DetailTarget {
   rowKey: string
   year: string
   month: number | null // 0~11
+  singleMonth: boolean
 }
 
 type ConfirmStatus = 'confirmed' | 'partial' | 'none'
@@ -53,7 +57,7 @@ type ConfirmStatus = 'confirmed' | 'partial' | 'none'
 const CONFIRM_CATEGORY_LABELS = ['매출', '매입', '영수증'] as const
 
 // 확정된 매출/매입 세금계산서·카드 영수증을 모아 손익계산서를 보여주는 조회 화면. 기본은 연도별이고
-// 월별로 전환할 수 있다. 서버 액션이 revalidate하면 props가 새로 내려오므로 집계는 props에서 매번 다시 계산한다.
+// 월별로 전환하면 선택한 한 달의 손익만 보여준다. 서버 액션이 revalidate하면 props가 새로 내려오므로 집계는 props에서 매번 다시 계산한다.
 export default function ProfitLossView({
   sales,
   purchases,
@@ -70,17 +74,32 @@ export default function ProfitLossView({
   const yearsDesc = useMemo(() => availableYears(data, currentYear), [data, currentYear])
   const yearsAsc = useMemo(() => [...yearsDesc].reverse(), [yearsDesc])
 
+  // 데이터가 있는 가장 최근 달(없으면 이번 달) — 월별 조회의 처음 선택 달이자 수기 항목 창을 여는 달.
+  const defaultManualMonth = useMemo(() => {
+    const keys = [
+      ...sales.map((r) => r.writtenDate),
+      ...purchases.map((r) => r.writtenDate),
+      ...receipts.map((r) => r.row.date),
+      ...manual.map((e) => e.billingYearMonth),
+    ]
+      .map((d) => d.slice(0, 7))
+      .filter((k) => /^\d{4}-\d{2}$/.test(k))
+    return keys.length > 0 ? keys.reduce((a, b) => (a > b ? a : b)) : currentMonth
+  }, [sales, purchases, receipts, manual, currentMonth])
+
   const [mode, setMode] = useState<ViewMode>('yearly')
-  const [year, setYear] = useState(currentYear)
+  const [year, setYear] = useState(() => defaultManualMonth.slice(0, 4))
+  const [month, setMonth] = useState(() => defaultManualMonth.slice(5, 7)) // 'MM'
   const [showRatio, setShowRatio] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [detail, setDetail] = useState<DetailTarget | null>(null)
   const [manualOpen, setManualOpen] = useState(false)
 
   const isMonthly = mode === 'monthly'
+  const monthKey = `${year}-${month}`
   const pl = useMemo(
-    () => (isMonthly ? monthlyProfitLoss(data, year) : yearlyProfitLoss(data, yearsAsc)),
-    [isMonthly, data, year, yearsAsc],
+    () => (isMonthly ? singleMonthProfitLoss(data, monthKey) : yearlyProfitLoss(data, yearsAsc)),
+    [isMonthly, data, monthKey, yearsAsc],
   )
   const rows = useMemo(() => flattenProfitLoss(pl), [pl])
   const visibleRows = rows.filter((r) => !r.parentKeys.some((k) => collapsed.has(k)))
@@ -88,9 +107,9 @@ export default function ProfitLossView({
   const unclassified = pl.sections.UNCLASSIFIED
   const unclassifiedCount = unclassified.lines.reduce((s, l) => s + l.items.length, 0)
 
-  // 요약 카드: 월별은 선택 연도 합계, 연도별은 가장 최근 연도 값.
-  const cardYear = isMonthly ? year : yearsAsc[yearsAsc.length - 1]
-  const cardValue = (series: Series) => (isMonthly ? series.total : series.values[series.values.length - 1])
+  // 요약 카드: 월별은 선택한 달, 연도별은 가장 최근 연도 값(둘 다 마지막 열).
+  const cardPeriod = isMonthly ? `${year}년 ${Number(month)}월` : `${yearsAsc[yearsAsc.length - 1]}년`
+  const cardValue = (series: Series) => series.values[series.values.length - 1]
 
   const confirmedSets = useMemo(
     () => [new Set(confirmedMonths.sales), new Set(confirmedMonths.purchase), new Set(confirmedMonths.receipt)],
@@ -129,19 +148,6 @@ export default function ProfitLossView({
     [rows],
   )
 
-  // 수기 항목 창은 데이터가 있는 가장 최근 달로 연다(없으면 이번 달).
-  const defaultManualMonth = useMemo(() => {
-    const keys = [
-      ...sales.map((r) => r.writtenDate),
-      ...purchases.map((r) => r.writtenDate),
-      ...receipts.map((r) => r.row.date),
-      ...manual.map((e) => e.billingYearMonth),
-    ]
-      .map((d) => d.slice(0, 7))
-      .filter((k) => /^\d{4}-\d{2}$/.test(k))
-    return keys.length > 0 ? keys.reduce((a, b) => (a > b ? a : b)) : currentMonth
-  }, [sales, purchases, receipts, manual, currentMonth])
-
   function toggleCollapse(key: string) {
     setCollapsed((prev) => {
       const next = new Set(prev)
@@ -152,12 +158,13 @@ export default function ProfitLossView({
   }
 
   function openDetail(row: DisplayRow, columnIndex: number | null) {
-    if (isMonthly) setDetail({ rowKey: row.key, year, month: columnIndex })
-    else if (columnIndex !== null) setDetail({ rowKey: row.key, year: pl.columns[columnIndex], month: null })
+    if (columnIndex === null) return
+    if (isMonthly) setDetail({ rowKey: row.key, year, month: Number(month) - 1, singleMonth: true })
+    else setDetail({ rowKey: row.key, year: pl.columns[columnIndex], month: null, singleMonth: false })
   }
 
   function handleDownload() {
-    downloadProfitLossWorkbook(pl, isMonthly ? { kind: 'monthly', year } : { kind: 'yearly' }).catch((e) =>
+    downloadProfitLossWorkbook(pl, isMonthly ? { kind: 'monthly', month: monthKey } : { kind: 'yearly' }).catch((e) =>
       window.alert(e instanceof Error ? e.message : '다운로드 중 오류가 발생했습니다.'),
     )
   }
@@ -175,13 +182,13 @@ export default function ProfitLossView({
       <div className="mb-6">
         <h1 className="text-xl font-semibold">손익계산서</h1>
         <p className="text-sm text-muted-foreground">
-          확정된 세금계산서·영수증과 수기 항목으로 손익을 계산해요. 연도별·월별로 볼 수 있고, 금액 칸을 누르면 월별
-          금액과 근거 자료를 확인할 수 있어요.
+          확정된 세금계산서·영수증과 수기 항목으로 손익을 계산해요. 연도별로 보거나, 월별로 한 달씩 볼 수 있고, 금액
+          칸을 누르면 근거 자료를 확인할 수 있어요.
         </p>
       </div>
 
       <div className="mb-4 grid gap-3 sm:grid-cols-4">
-        <SummaryCard label={`${cardYear}년 매출액`} value={cardValue(revenue)} />
+        <SummaryCard label={`${cardPeriod} 매출액`} value={cardValue(revenue)} />
         {(
           [
             ['매출총이익', pl.grossProfit],
@@ -191,7 +198,7 @@ export default function ProfitLossView({
         ).map(([label, series]) => (
           <SummaryCard
             key={label}
-            label={`${cardYear}년 ${label}`}
+            label={`${cardPeriod} ${label}`}
             value={cardValue(series)}
             ratio={ratioOf(cardValue(series), cardValue(revenue))}
           />
@@ -227,6 +234,15 @@ export default function ProfitLossView({
             onChange={setYear}
           />
         )}
+        {isMonthly && (
+          <SelectField
+            label="월"
+            value={month}
+            options={MONTH_NUMBERS.map((m) => [String(m).padStart(2, '0'), `${m}월`] as [string, string])}
+            onChange={setMonth}
+            widthClass="w-24"
+          />
+        )}
         <SelectField
           label="표시"
           value={showRatio ? 'ratio' : 'amount'}
@@ -247,26 +263,17 @@ export default function ProfitLossView({
         </div>
       </div>
 
-      <div className={cn('max-h-[70vh] overflow-auto rounded-lg border bg-card', !isMonthly && 'w-fit max-w-full')}>
-        {/* 억 단위 금액(예: 526,457,061)이 잘리지 않는 고정 폭으로 둔다. 월별은 열이 많아 화면이 좁으면 항목·합계
-            열을 고정한 채 가로 스크롤하고, 연도별은 열이 적어 표 너비를 내용만큼만 쓴다. */}
+      <div className="max-h-[70vh] w-fit max-w-full overflow-auto rounded-lg border bg-card">
+        {/* 억 단위 금액(예: 526,457,061)이 잘리지 않는 고정 폭으로 두고, 표 너비는 내용만큼만 쓴다. */}
         <table
-          className={cn(
-            'table-fixed border-separate border-spacing-0 text-[13px]',
-            isMonthly && 'w-full min-w-[1560px]',
-          )}
-          style={isMonthly ? undefined : { width: YEARLY_LABEL_WIDTH + YEARLY_COLUMN_WIDTH * pl.columns.length }}
+          className="table-fixed border-separate border-spacing-0 text-[13px]"
+          style={{ width: LABEL_WIDTH + COLUMN_WIDTH * pl.columns.length }}
         >
           <colgroup>
-            <col className={isMonthly ? 'w-40' : undefined} style={isMonthly ? undefined : { width: YEARLY_LABEL_WIDTH }} />
+            <col style={{ width: LABEL_WIDTH }} />
             {pl.columns.map((key) => (
-              <col
-                key={key}
-                className={isMonthly ? 'w-[104px]' : undefined}
-                style={isMonthly ? undefined : { width: YEARLY_COLUMN_WIDTH }}
-              />
+              <col key={key} style={{ width: COLUMN_WIDTH }} />
             ))}
-            {isMonthly && <col className="w-[120px]" />}
           </colgroup>
           <thead className="sticky top-0 z-10 bg-muted text-xs text-muted-foreground">
             <tr>
@@ -277,7 +284,6 @@ export default function ProfitLossView({
                   <ConfirmBadge status={h.status} tooltip={h.tooltip} />
                 </th>
               ))}
-              {isMonthly && <th className="sticky right-0 z-10 bg-muted px-3 py-1.5 text-right font-medium">합계</th>}
             </tr>
           </thead>
           <tbody>
@@ -286,7 +292,7 @@ export default function ProfitLossView({
               const isProfit = row.kind === 'profit'
               const collapsible = row.collapseKey !== undefined && (row.kind === 'group' || rowHasChildren(rows, row))
               const isCollapsed = row.collapseKey !== undefined && collapsed.has(row.collapseKey)
-              // 가로 스크롤 시 고정되는 항목/합계 열도 같은 배경을 쓰므로 뒤 칸이 비치지 않게 불투명 색만 쓴다.
+              // 가로 스크롤 시 고정되는 항목 열도 같은 배경을 쓰므로 뒤 칸이 비치지 않게 불투명 색만 쓴다.
               const rowBg = isProfit ? 'bg-accent' : isLine ? 'bg-card' : 'bg-muted'
               return (
                 <tr key={row.key} className={cn(rowBg, !isLine && 'font-semibold', row.warning && 'text-warning-foreground')}>
@@ -321,15 +327,6 @@ export default function ProfitLossView({
                       onClick={v !== 0 ? () => openDetail(row, i) : undefined}
                     />
                   ))}
-                  {isMonthly && (
-                    <AmountCell
-                      text={formatCell(row.total, revenue.total)}
-                      negative={row.total < 0}
-                      strong
-                      className={cn('sticky right-0', rowBg)}
-                      onClick={row.total !== 0 ? () => openDetail(row, null) : undefined}
-                    />
-                  )}
                 </tr>
               )
             })}
@@ -488,6 +485,9 @@ function SourceDetailModal({
   const items = monthKey === null ? allItems : allItems.filter((it) => it.monthKey === monthKey)
   const total = items.reduce((s, it) => s + it.amount, 0)
   const sectionLabel = row.kind === 'line' && row.section ? `${SECTION_LABEL[row.section]} · ` : ''
+  const singleMonth = target.singleMonth && target.month !== null
+  const periodLabel = singleMonth ? `${target.year}년 ${target.month! + 1}월` : `${target.year}년`
+  const monthValue = singleMonth ? row.values[target.month!] : row.total
   const format = (v: number, rev: number) => {
     if (showRatio) {
       const ratio = ratioOf(v, rev)
@@ -497,66 +497,77 @@ function SourceDetailModal({
   }
 
   return (
-    <Modal title={`${target.year}년 · ${sectionLabel}${row.label}`} onClose={onClose}>
-      <div className="mb-4 overflow-x-auto rounded-lg border bg-card">
-        <table className="w-full min-w-[1100px] table-fixed text-[13px]">
-          <thead className="bg-muted text-xs text-muted-foreground">
-            <tr>
-              {MONTH_NUMBERS.map((m) => (
-                <th key={m} className="px-2 py-1.5 text-right font-medium">
-                  {m}월
-                </th>
-              ))}
-              <th className="px-2 py-1.5 text-right font-medium">합계</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              {row.values.map((v, i) => {
-                const selected = monthFilter === i
-                const clickable = !isProfit && v !== 0
-                return (
-                  <td
-                    key={i}
-                    onClick={clickable ? () => setMonthFilter(selected ? null : i) : undefined}
-                    className={cn(
-                      'whitespace-nowrap px-2 py-2 text-right tabular-nums',
-                      v < 0 && 'text-destructive',
-                      clickable && 'cursor-pointer hover:bg-muted hover:underline',
-                      selected && 'bg-accent font-semibold ring-1 ring-inset ring-primary',
-                    )}
-                  >
-                    {format(v, monthRevenue[i])}
-                  </td>
-                )
-              })}
-              <td
-                onClick={!isProfit && monthFilter !== null ? () => setMonthFilter(null) : undefined}
-                className={cn(
-                  'whitespace-nowrap px-2 py-2 text-right font-semibold tabular-nums',
-                  row.total < 0 && 'text-destructive',
-                  !isProfit && monthFilter !== null && 'cursor-pointer hover:bg-muted hover:underline',
-                  !isProfit && monthFilter === null && 'bg-accent',
-                )}
-              >
-                {format(row.total, monthlyPl.sections.REVENUE.total)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+    <Modal title={`${periodLabel} · ${sectionLabel}${row.label}`} onClose={onClose}>
+      {singleMonth ? (
+        <div className="mb-4 flex items-baseline gap-2 text-sm">
+          <span className="text-muted-foreground">{periodLabel} 금액</span>
+          <span className={cn('text-base font-semibold tabular-nums', monthValue < 0 && 'text-destructive')}>
+            {format(monthValue, monthRevenue[target.month!])}
+          </span>
+        </div>
+      ) : (
+        <div className="mb-4 overflow-x-auto rounded-lg border bg-card">
+          <table className="w-full min-w-[1100px] table-fixed text-[13px]">
+            <thead className="bg-muted text-xs text-muted-foreground">
+              <tr>
+                {MONTH_NUMBERS.map((m) => (
+                  <th key={m} className="px-2 py-1.5 text-right font-medium">
+                    {m}월
+                  </th>
+                ))}
+                <th className="px-2 py-1.5 text-right font-medium">합계</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                {row.values.map((v, i) => {
+                  const selected = monthFilter === i
+                  const clickable = !isProfit && v !== 0
+                  return (
+                    <td
+                      key={i}
+                      onClick={clickable ? () => setMonthFilter(selected ? null : i) : undefined}
+                      className={cn(
+                        'whitespace-nowrap px-2 py-2 text-right tabular-nums',
+                        v < 0 && 'text-destructive',
+                        clickable && 'cursor-pointer hover:bg-muted hover:underline',
+                        selected && 'bg-accent font-semibold ring-1 ring-inset ring-primary',
+                      )}
+                    >
+                      {format(v, monthRevenue[i])}
+                    </td>
+                  )
+                })}
+                <td
+                  onClick={!isProfit && monthFilter !== null ? () => setMonthFilter(null) : undefined}
+                  className={cn(
+                    'whitespace-nowrap px-2 py-2 text-right font-semibold tabular-nums',
+                    row.total < 0 && 'text-destructive',
+                    !isProfit && monthFilter !== null && 'cursor-pointer hover:bg-muted hover:underline',
+                    !isProfit && monthFilter === null && 'bg-accent',
+                  )}
+                >
+                  {format(row.total, monthlyPl.sections.REVENUE.total)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {isProfit ? (
         <p className="text-sm text-muted-foreground">
-          이익 줄은 여러 구분을 더하고 뺀 값이라 근거 자료 목록 대신 월별 금액만 보여드려요. 매출액·원가·판매관리비 줄을
+          이익 줄은 여러 구분을 더하고 뺀 값이라 근거 자료 목록 대신 금액만 보여드려요. 매출액·원가·판매관리비 줄을
           눌러 근거 자료를 확인해 주세요.
         </p>
       ) : (
         <>
           <p className="mb-2 text-sm text-muted-foreground">
-            {monthFilter === null
-              ? '연간 전체 자료예요. 위의 월 칸을 누르면 그 달 자료만 볼 수 있어요.'
-              : `${monthFilter + 1}월 자료예요. 같은 칸이나 합계를 다시 누르면 연간 전체로 돌아가요.`}{' '}
+            {singleMonth
+              ? `${periodLabel} 자료예요.`
+              : monthFilter === null
+                ? '연간 전체 자료예요. 위의 월 칸을 누르면 그 달 자료만 볼 수 있어요.'
+                : `${monthFilter + 1}월 자료예요. 같은 칸이나 합계를 다시 누르면 연간 전체로 돌아가요.`}{' '}
             불공제 세금계산서와 불공·간이 영수증은 부가세까지 비용으로 보고 합계금액을 반영했어요.
           </p>
           <div className="max-h-[50vh] overflow-auto rounded-lg border bg-card">

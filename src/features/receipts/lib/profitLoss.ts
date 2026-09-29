@@ -260,6 +260,11 @@ export function monthlyProfitLoss(data: ProfitLossSourceData, year: string): Pro
   return buildProfitLoss(data, columns, (d) => monthIndexOf(d, year))
 }
 
+// 선택한 한 달('YYYY-MM')만의 열 하나.
+export function singleMonthProfitLoss(data: ProfitLossSourceData, monthKey: string): ProfitLoss {
+  return buildProfitLoss(data, [monthKey], (d) => (d.slice(0, 7) === monthKey ? 0 : -1))
+}
+
 // 연도별 열(years는 오름차순 'YYYY' 목록).
 export function yearlyProfitLoss(data: ProfitLossSourceData, years: string[]): ProfitLoss {
   return buildProfitLoss(data, years, (d) => years.indexOf(d.slice(0, 4)))
