@@ -84,6 +84,11 @@ export interface SourceItem {
   detail: string
   taxType: string
   amount: number
+  // 원천 건의 실제 공급가액/세액/합계 — amount(손익 반영 금액)와 달리 불공 여부와 무관한 증빙상 금액.
+  // 엑셀 세부내역 시트에 쓴다. 수기 항목은 공급가액 = amount, 세액 0.
+  supplyAmount: number
+  taxAmount: number
+  totalAmount: number
 }
 
 export interface ProfitLossLine {
@@ -191,6 +196,9 @@ export function buildProfitLoss(
       detail: r.detail,
       taxType: r.taxType,
       amount: r.supplyAmount,
+      supplyAmount: r.supplyAmount,
+      taxAmount: r.taxAmount,
+      totalAmount: r.totalAmount,
     })
   }
 
@@ -204,6 +212,9 @@ export function buildProfitLoss(
       detail: r.detail,
       taxType: r.taxType,
       amount: invoiceCostAmount(r),
+      supplyAmount: r.supplyAmount,
+      taxAmount: r.taxAmount,
+      totalAmount: r.totalAmount,
     })
   }
 
@@ -217,6 +228,9 @@ export function buildProfitLoss(
       detail: row.detail,
       taxType: row.taxType,
       amount: receiptCostAmount(row),
+      supplyAmount: row.supplyAmount,
+      taxAmount: row.taxAmount,
+      totalAmount: row.totalAmount,
     })
   }
 
@@ -230,6 +244,9 @@ export function buildProfitLoss(
       detail: '',
       taxType: '',
       amount: e.amount,
+      supplyAmount: e.amount,
+      taxAmount: 0,
+      totalAmount: e.amount,
     })
   }
 

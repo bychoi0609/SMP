@@ -1,7 +1,15 @@
 import ExcelJS from 'exceljs'
 import type { TaxInvoiceRow } from '../types/tables'
 import type { ReceiptSheet } from './parseReceipt'
-import { flattenProfitLoss, periodLabel, type ProfitLoss } from './profitLoss'
+import {
+  flattenProfitLoss,
+  periodLabel,
+  SECTION_LABEL,
+  type ProfitLoss,
+  type ProfitLossSection,
+  type SourceItem,
+  type SourceKind,
+} from './profitLoss'
 
 // 다운로드 양식은 samples/세금계산서,계산서(출력양식).xlsx 를 그대로 따른다 —
 // 제목 행/회사명/병합 헤더/글꼴·색상·테두리·정렬/숫자·날짜 서식/합계(SUM) 행/열 너비까지 실제 사용 파일과 동일하게 맞춘다.
@@ -434,23 +442,10 @@ const PROFIT_LOSS_BOLD_FONT: Partial<ExcelJS.Font> = { ...FONT, bold: true }
 
 export type ProfitLossExportMode = { kind: 'yearly' } | { kind: 'period'; start: string; end: string } // 'YYYY-MM'
 
-function buildProfitLossWorkbook(pl: ProfitLoss, mode: ProfitLossExportMode): ExcelJS.Workbook {
-  const isPeriod = mode.kind === 'period'
-  const label = isPeriod ? periodLabel(mode.start, mode.end) : ''
-  const title = isPeriod ? `손익계산서(${label})` : '손익계산서(연도별)'
-  const columnLabels = pl.columns.map((c) => (isPeriod ? label : `${c}년`))
-  const headers = ['항목', ...columnLabels]
+// 1행: 제목 + 회사명(오른쪽 끝 두 칸, 열이 적으면 한 칸) — 열 개수가 시트마다 달라 병합 범위를 계산한다.
+// 2행: 컬럼 헤더.
+function writeProfitLossHeader(ws: ExcelJS.Worksheet, title: string, headers: string[]) {
   const lastCol = headers.length
-
-  const wb = new ExcelJS.Workbook()
-  const ws = wb.addWorksheet(sanitizeSheetName(title))
-  ws.properties.dyDescent = SHEET_DY_DESCENT
-  ws.views = [{ zoomScale: 100, zoomScaleNormal: 100, state: 'frozen', xSplit: 1, ySplit: 2 }] // 항목 열·헤더 고정
-
-  ws.getColumn(1).width = PROFIT_LOSS_WIDTH_LABEL
-  for (let c = 2; c <= lastCol; c++) ws.getColumn(c).width = PROFIT_LOSS_WIDTH_AMOUNT
-
-  // 1행: 제목 + 회사명(오른쪽 끝 두 칸, 열이 적으면 한 칸) — 열 개수가 모드마다 달라 병합 범위를 계산한다.
   const titleEnd = lastCol <= 2 ? 1 : lastCol - 2
   if (titleEnd > 1) ws.mergeCells(1, 1, 1, titleEnd)
   if (lastCol > titleEnd + 1) ws.mergeCells(1, titleEnd + 1, 1, lastCol)
@@ -472,6 +467,127 @@ function buildProfitLossWorkbook(pl: ProfitLoss, mode: ProfitLossExportMode): Ex
     cell.alignment = { horizontal: 'center', vertical: 'middle' }
   })
   ws.getRow(2).height = ROW_HEIGHTS.header
+}
+
+// 손익계산서 세부내역 시트(매출 세금계산서/매입 세금계산서/영수증) — 원천 건을 구분(매출은 계정과목,
+// 매입·영수증은 원가 구분)별로 묶어 "구분 제목 행 → 건별 행 → 소계 행"을 반복하고 맨 끝에 총합계를 둔다.
+// 연도별 모드에서는 연도가 섞이지 않도록 연도(열)마다 따로 묶는다.
+// 금액은 손익 반영 금액(불공이면 합계)이 아니라 증빙상 공급가액/세액/합계 그대로다.
+interface DetailGroup {
+  label: string
+  items: SourceItem[]
+}
+
+// 매입·영수증이 들어갈 수 있는 구분(원가 → 판관비 → 미분류) 순서.
+const DETAIL_COST_SECTIONS: ProfitLossSection[] = [
+  'CONSTRUCTION_COST',
+  'MANUFACTURING_COST',
+  'MERCHANDISE_COST',
+  'SGA',
+  'UNCLASSIFIED',
+]
+
+function detailGroups(pl: ProfitLoss, kind: SourceKind, columnLabels: string[]): DetailGroup[] {
+  // 매출은 계정과목(태양광매출 등)별, 매입·영수증은 원가 구분(공사원가 등)별.
+  const units =
+    kind === 'sales'
+      ? pl.sections.REVENUE.lines.map((l) => ({ name: l.accountCode, items: l.items }))
+      : DETAIL_COST_SECTIONS.map((section) => ({
+          name: SECTION_LABEL[section],
+          items: pl.sections[section].lines.flatMap((l) => l.items),
+        }))
+  const multiColumn = columnLabels.length > 1
+  const groups: DetailGroup[] = []
+  columnLabels.forEach((columnLabel, columnIndex) => {
+    for (const unit of units) {
+      const items = unit.items
+        .filter((it) => it.kind === kind && it.columnIndex === columnIndex)
+        .sort((a, b) => a.date.localeCompare(b.date))
+      if (items.length === 0) continue
+      groups.push({ label: multiColumn ? `${unit.name} (${columnLabel})` : unit.name, items })
+    }
+  })
+  return groups
+}
+
+const DETAIL_WIDTH_ITEM = 50
+const DETAIL_WIDTH_MERCHANT = 29
+
+function buildProfitLossDetailSheet(
+  wb: ExcelJS.Workbook,
+  title: string,
+  suffix: string,
+  nameHeader: string,
+  nameOf: (it: SourceItem) => string,
+  groups: DetailGroup[],
+) {
+  const ws = wb.addWorksheet(sanitizeSheetName(title))
+  ws.properties.dyDescent = SHEET_DY_DESCENT
+  ws.views = [{ zoomScale: 100, zoomScaleNormal: 100, state: 'frozen', ySplit: 2 }] // 헤더 고정
+
+  ws.getColumn(1).width = nameHeader === '가맹점명' ? DETAIL_WIDTH_MERCHANT : DETAIL_WIDTH_ITEM
+  ws.getColumn(2).width = WIDTH_SUPPLY
+  ws.getColumn(3).width = WIDTH_TAX
+  ws.getColumn(4).width = WIDTH_TOTAL
+  writeProfitLossHeader(ws, `${title}${suffix}`, [nameHeader, '공급가액', '세액', '합계'])
+
+  let rowNum = 3
+  function writeRow(values: (string | number | null)[], style: 'group' | 'line' | 'subtotal' | 'total') {
+    values.forEach((v, ci) => {
+      const cell = ws.getCell(rowNum, ci + 1)
+      cell.value = v
+      cell.font = style === 'line' ? FONT : PROFIT_LOSS_BOLD_FONT
+      cell.border = THIN_BORDER_DATA
+      if (style === 'total') cell.fill = HEADER_FILL_ACCENT
+      else if (style !== 'line') cell.fill = HEADER_FILL_PLAIN
+      if (ci === 0) {
+        const horizontal = style === 'subtotal' || style === 'total' ? 'center' : 'left'
+        cell.alignment = { horizontal, vertical: 'middle', indent: style === 'line' ? 1 : 0 }
+      } else {
+        cell.alignment = { horizontal: 'right', vertical: 'middle' }
+        cell.numFmt = AMOUNT_FORMAT
+      }
+    })
+    ws.getRow(rowNum).height = ROW_HEIGHTS.data
+    rowNum += 1
+  }
+
+  const grand = { supply: 0, tax: 0, total: 0 }
+  for (const group of groups) {
+    writeRow([group.label, null, null, null], 'group')
+    const sub = { supply: 0, tax: 0, total: 0 }
+    for (const it of group.items) {
+      writeRow([nameOf(it), it.supplyAmount, it.taxAmount, it.totalAmount], 'line')
+      sub.supply += it.supplyAmount
+      sub.tax += it.taxAmount
+      sub.total += it.totalAmount
+    }
+    writeRow(['소계', sub.supply, sub.tax, sub.total], 'subtotal')
+    grand.supply += sub.supply
+    grand.tax += sub.tax
+    grand.total += sub.total
+  }
+  if (groups.length === 0) writeRow(['해당 기간 자료가 없습니다.', null, null, null], 'line')
+  else writeRow(['총합계', grand.supply, grand.tax, grand.total], 'total')
+}
+
+function buildProfitLossWorkbook(pl: ProfitLoss, mode: ProfitLossExportMode): ExcelJS.Workbook {
+  const isPeriod = mode.kind === 'period'
+  const label = isPeriod ? periodLabel(mode.start, mode.end) : ''
+  const title = isPeriod ? `손익계산서(${label})` : '손익계산서(연도별)'
+  const columnLabels = pl.columns.map((c) => (isPeriod ? label : `${c}년`))
+  const headers = ['항목', ...columnLabels]
+  const lastCol = headers.length
+
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet(sanitizeSheetName(title))
+  ws.properties.dyDescent = SHEET_DY_DESCENT
+  ws.views = [{ zoomScale: 100, zoomScaleNormal: 100, state: 'frozen', xSplit: 1, ySplit: 2 }] // 항목 열·헤더 고정
+
+  ws.getColumn(1).width = PROFIT_LOSS_WIDTH_LABEL
+  for (let c = 2; c <= lastCol; c++) ws.getColumn(c).width = PROFIT_LOSS_WIDTH_AMOUNT
+
+  writeProfitLossHeader(ws, title, headers)
 
   flattenProfitLoss(pl).forEach((row, i) => {
     const rowNum = 3 + i
@@ -493,6 +609,13 @@ function buildProfitLossWorkbook(pl: ProfitLoss, mode: ProfitLossExportMode): Ex
     })
     ws.getRow(rowNum).height = ROW_HEIGHTS.data
   })
+
+  // 2~4번째 시트: 세부내역. 영수증의 description은 "현장명 · 내역"이라 가맹점명은 counterparty를 쓴다.
+  const suffix = isPeriod ? `(${label})` : '(연도별)'
+  const byItemName = (it: SourceItem) => it.description
+  buildProfitLossDetailSheet(wb, '매출 세금계산서 세부내역', suffix, '품목명', byItemName, detailGroups(pl, 'sales', columnLabels))
+  buildProfitLossDetailSheet(wb, '매입 세금계산서 세부내역', suffix, '품목명', byItemName, detailGroups(pl, 'purchase', columnLabels))
+  buildProfitLossDetailSheet(wb, '영수증 세부내역', suffix, '가맹점명', (it) => it.counterparty, detailGroups(pl, 'receipt', columnLabels))
 
   return wb
 }
