@@ -168,6 +168,9 @@ export default function ReceiptsApp() {
       ),
     [purchaseMonthGroups, purchaseConfirmedMonths],
   )
+  // 탭 옆 건수는 아직 확정되지 않은 달의 행만 센다(확정된 달은 이미 처리 완료된 데이터이므로 제외).
+  const unconfirmedSalesCount = salesRows.length - lockedSalesGlobalIndices.size
+  const unconfirmedPurchaseCount = purchaseRows.length - lockedPurchaseGlobalIndices.size
 
   // 영수증은 카드 탭만 있고 월 탭이 없으므로, 확정용 월 목록/잠금 판정은 전체(카드 무관)를 기준으로
   // 따로 계산한다.
@@ -747,14 +750,14 @@ export default function ReceiptsApp() {
             className={openModalTab === 'sales' ? 'active' : ''}
             onClick={() => setOpenModalTab(openModalTab === 'sales' ? null : 'sales')}
           >
-            세금계산서(매출) {salesRows.length > 0 && `(${salesRows.length})`}
+            세금계산서(매출) {unconfirmedSalesCount > 0 && `(${unconfirmedSalesCount})`}
           </button>
           <button
             type="button"
             className={openModalTab === 'purchase' ? 'active' : ''}
             onClick={() => setOpenModalTab(openModalTab === 'purchase' ? null : 'purchase')}
           >
-            세금계산서(매입) {purchaseRows.length > 0 && `(${purchaseRows.length})`}
+            세금계산서(매입) {unconfirmedPurchaseCount > 0 && `(${unconfirmedPurchaseCount})`}
           </button>
           <button
             type="button"
