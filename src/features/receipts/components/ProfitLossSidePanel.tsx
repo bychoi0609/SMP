@@ -7,13 +7,14 @@ import {
   buildProfitLoss,
   monthlyProfitLoss,
   monthsBetween,
+  NO_ACCOUNT_LABEL,
   SECTION_LABEL,
   type ProfitLoss,
   type ProfitLossSection,
   type ProfitLossSourceData,
 } from '../lib/profitLoss'
 
-// 손익계산서 표 옆 보조 패널 — 월별 매출·영업이익 추이와 비용 구성. 차트 라이브러리 없이 막대만 그린다.
+// 손익계산서 표 옆 보조 패널 — 월별 매출·영업이익 추이와 매출·비용 구성. 차트 라이브러리 없이 막대만 그린다.
 // 연도별 조회는 가장 최근 연도의 1~12월, 기간 조회는 그 기간의 월들을 보여준다.
 type PanelScope = { kind: 'year'; year: string } | { kind: 'period'; start: string; end: string }
 
@@ -26,6 +27,37 @@ const COST_SECTIONS: ProfitLossSection[] = [
   'NON_OPERATING_EXPENSE',
 ]
 const COST_COLORS = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-warning-foreground', 'bg-chart-5']
+// 매출은 비용과 헷갈리지 않게 네이비 한 가지 색의 진하기로 나눈다.
+const REVENUE_COLORS = ['bg-primary', 'bg-primary/75', 'bg-primary/55', 'bg-primary/40', 'bg-primary/25', 'bg-primary/15']
+const REVENUE_TOP_N = 5
+const UNASSIGNED_LABEL = '미지정'
+const OTHERS_LABEL = '기타'
+
+interface CompositionItem {
+  key: string
+  label: string
+  amount: number
+  color: string
+}
+
+// 매출 계정과목을 금액 큰 순으로 상위 REVENUE_TOP_N개만 두고 나머지는 '기타'로 묶는다. 계정과목이 없는 매출은
+// '미지정'으로 항상 맨 아래에 둔다. 마이너스 조정만 남은 계정과목도 목록에는 그대로 보여준다.
+function revenueComposition(pl: ProfitLoss): CompositionItem[] {
+  const lines = pl.sections.REVENUE.lines.filter((l) => l.total !== 0)
+  const named = lines.filter((l) => l.accountCode !== NO_ACCOUNT_LABEL).sort((a, b) => b.total - a.total)
+  const unassigned = lines.find((l) => l.accountCode === NO_ACCOUNT_LABEL)
+  const items: CompositionItem[] = named
+    .slice(0, REVENUE_TOP_N)
+    .map((l, i) => ({ key: l.accountCode, label: l.accountCode, amount: l.total, color: REVENUE_COLORS[i] }))
+  const others = named.slice(REVENUE_TOP_N).reduce((s, l) => s + l.total, 0)
+  if (named.length > REVENUE_TOP_N) {
+    items.push({ key: OTHERS_LABEL, label: OTHERS_LABEL, amount: others, color: REVENUE_COLORS[REVENUE_TOP_N] })
+  }
+  if (unassigned) {
+    items.push({ key: UNASSIGNED_LABEL, label: UNASSIGNED_LABEL, amount: unassigned.total, color: 'bg-muted-foreground/40' })
+  }
+  return items
+}
 
 const CHART_HEIGHT = 180
 
@@ -44,12 +76,13 @@ export function ProfitLossSidePanel({
     return buildProfitLoss(data, months, (d) => months.indexOf(d.slice(0, 7)))
   }, [data, scope])
 
-  const costs = COST_SECTIONS.map((section, i) => ({
-    section,
+  const revenues = revenueComposition(monthly)
+  const costs: CompositionItem[] = COST_SECTIONS.map((section, i) => ({
+    key: section,
+    label: SECTION_LABEL[section],
     color: COST_COLORS[i],
     amount: monthly.sections[section].total,
-  })).filter((c) => c.amount > 0)
-  const costTotal = costs.reduce((s, c) => s + c.amount, 0)
+  })).filter((c) => c.amount !== 0)
 
   return (
     <div className="flex flex-col gap-4">
@@ -58,42 +91,80 @@ export function ProfitLossSidePanel({
         <MonthlyBars pl={monthly} />
       </div>
 
-      <div className="rounded-xl border bg-card p-5 shadow-sm">
-        <PanelTitle title="비용 구성" scopeLabel={scopeLabel} />
-        {costTotal === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">이 기간에 반영된 비용이 없어요.</p>
-        ) : (
-          <>
-            <div className="mb-4 flex h-3 overflow-hidden rounded-full bg-muted">
-              {costs.map((c) => (
+      <CompositionCard
+        title="매출 구성"
+        scopeLabel={scopeLabel}
+        items={revenues}
+        totalLabel="매출 합계"
+        emptyText="이 기간에 반영된 매출이 없어요."
+      />
+      <CompositionCard
+        title="비용 구성"
+        scopeLabel={scopeLabel}
+        items={costs}
+        totalLabel="비용 합계"
+        emptyText="이 기간에 반영된 비용이 없어요."
+      />
+    </div>
+  )
+}
+
+// 비율 막대 + 항목별 금액·% 목록. 비율은 플러스 금액끼리만 나누고, 마이너스 금액은 목록에만 빨간색으로 보여준다.
+function CompositionCard({
+  title,
+  scopeLabel,
+  items,
+  totalLabel,
+  emptyText,
+}: {
+  title: string
+  scopeLabel: string
+  items: CompositionItem[]
+  totalLabel: string
+  emptyText: string
+}) {
+  const positiveTotal = items.reduce((s, it) => s + Math.max(it.amount, 0), 0)
+  const total = items.reduce((s, it) => s + it.amount, 0)
+  return (
+    <div className="rounded-xl border bg-card p-5 shadow-sm">
+      <PanelTitle title={title} scopeLabel={scopeLabel} />
+      {items.length === 0 ? (
+        <p className="py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
+      ) : (
+        <>
+          <div className="mb-4 flex h-3 overflow-hidden rounded-full bg-muted">
+            {items
+              .filter((it) => it.amount > 0)
+              .map((it) => (
                 <div
-                  key={c.section}
-                  className={c.color}
-                  style={{ width: `${(c.amount / costTotal) * 100}%` }}
-                  title={`${SECTION_LABEL[c.section]} ${formatNumber(c.amount)}원`}
+                  key={it.key}
+                  className={it.color}
+                  style={{ width: `${(it.amount / positiveTotal) * 100}%` }}
+                  title={`${it.label} ${formatNumber(it.amount)}원`}
                 />
               ))}
-            </div>
-            <ul className="flex flex-col gap-2.5 text-sm">
-              {costs.map((c) => (
-                <li key={c.section} className="flex items-center gap-2">
-                  <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', c.color)} />
-                  <span className="flex-1">{SECTION_LABEL[c.section]}</span>
-                  <span className="tabular-nums">{formatNumber(c.amount)}</span>
-                  <span className="w-14 text-right text-xs text-muted-foreground tabular-nums">
-                    {((c.amount / costTotal) * 100).toFixed(1)}%
-                  </span>
-                </li>
-              ))}
-              <li className="mt-1 flex items-center gap-2 border-t pt-2.5 font-semibold">
-                <span className="flex-1 pl-[18px]">비용 합계</span>
-                <span className="tabular-nums">{formatNumber(costTotal)}</span>
-                <span className="w-14" />
+          </div>
+          <ul className="flex flex-col gap-2.5 text-sm">
+            {items.map((it) => (
+              <li key={it.key} className="flex items-center gap-2">
+                <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', it.color)} />
+                <span className="min-w-0 flex-1 truncate">{it.label}</span>
+                <span className={cn('tabular-nums', it.amount < 0 && 'text-destructive')}>
+                  {formatNumber(it.amount)}
+                </span>
+                <span className="w-14 text-right text-xs text-muted-foreground tabular-nums">
+                  {it.amount > 0 ? `${((it.amount / positiveTotal) * 100).toFixed(1)}%` : '-'}
+                </span>
               </li>
-            </ul>
-          </>
-        )}
-      </div>
+            ))}
+            <li className="mt-1 flex items-center gap-2 border-t pt-2.5 font-semibold">
+              <span className="flex-1 pl-[18px]">{totalLabel}</span>
+              <span className={cn('tabular-nums', total < 0 && 'text-destructive')}>{formatNumber(total)}</span>
+              <span className="w-14" />
+            </li>
+          </ul>
+        </>
+      )}
     </div>
   )
 }

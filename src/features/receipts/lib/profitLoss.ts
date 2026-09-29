@@ -51,7 +51,7 @@ export const DETAIL_TO_SECTION: Record<string, ProfitLossSection> = {
 const NON_DEDUCTIBLE_INVOICE_TAX_TYPES = ['불공']
 const NON_DEDUCTIBLE_RECEIPT_TAX_TYPES = ['불공', '간이']
 
-const NO_ACCOUNT_LABEL = '(계정과목 없음)'
+export const NO_ACCOUNT_LABEL = '(계정과목 없음)'
 
 export interface ManualEntryDTO {
   id: number
