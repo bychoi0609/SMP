@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { connection } from "next/server"
 import {
   ArrowRight,
   ChartColumn,
@@ -14,6 +15,12 @@ import {
 } from "lucide-react"
 
 import { Card, CardDescription, CardTitle } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
+import {
+  getDashboardStatus,
+  type StatusBadge,
+  type StatusTone,
+} from "@/lib/dashboard-status"
 
 type Section = {
   href: string
@@ -82,7 +89,41 @@ const RECEIPTS_SECTIONS: Section[] = [
   },
 ]
 
-function SectionCard({ section }: { section: Section }) {
+const TONE_CLASS: Record<StatusTone, string> = {
+  neutral: "bg-muted text-muted-foreground",
+  success:
+    "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  warning: "bg-warning text-warning-foreground",
+  danger: "bg-destructive/10 text-destructive dark:bg-destructive/20",
+}
+
+function StatusBadges({ badges }: { badges: StatusBadge[] }) {
+  if (badges.length === 0) return null
+  return (
+    <div className="mt-auto flex flex-wrap gap-1.5 pt-1">
+      {badges.map((badge) => (
+        <span
+          key={badge.label}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium tabular-nums",
+            TONE_CLASS[badge.tone],
+          )}
+        >
+          <span className="size-1.5 rounded-full bg-current" aria-hidden />
+          {badge.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function SectionCard({
+  section,
+  badges,
+}: {
+  section: Section
+  badges: StatusBadge[]
+}) {
   const Icon = section.icon
   return (
     <Link
@@ -100,6 +141,7 @@ function SectionCard({ section }: { section: Section }) {
           <CardTitle>{section.title}</CardTitle>
           <CardDescription>{section.description}</CardDescription>
         </div>
+        <StatusBadges badges={badges} />
       </Card>
     </Link>
   )
@@ -108,9 +150,11 @@ function SectionCard({ section }: { section: Section }) {
 function SectionGroup({
   title,
   sections,
+  status,
 }: {
   title: string
   sections: Section[]
+  status: Record<string, StatusBadge[]>
 }) {
   return (
     <section className="flex flex-col gap-4">
@@ -120,22 +164,30 @@ function SectionGroup({
       </h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {sections.map((section) => (
-          <SectionCard key={section.href} section={section} />
+          <SectionCard
+            key={section.href}
+            section={section}
+            badges={status[section.href] ?? []}
+          />
         ))}
       </div>
     </section>
   )
 }
 
-export default function DashboardPage() {
+// 상태 뱃지는 오늘 날짜(마감 D-day 등)와 최신 DB 값에 따라 달라지므로 요청마다 렌더링한다.
+export default async function DashboardPage() {
+  await connection()
+  const status = await getDashboardStatus()
+
   return (
     <div className="flex flex-col gap-10">
       <div>
         <h1 className="text-xl font-semibold">메인</h1>
       </div>
 
-      <SectionGroup title="영수증/세금계산서" sections={RECEIPTS_SECTIONS} />
-      <SectionGroup title="태양광" sections={SOLAR_SECTIONS} />
+      <SectionGroup title="영수증/세금계산서" sections={RECEIPTS_SECTIONS} status={status} />
+      <SectionGroup title="태양광" sections={SOLAR_SECTIONS} status={status} />
     </div>
   )
 }
