@@ -1,107 +1,129 @@
 import Link from "next/link"
-import { ArrowRight } from "lucide-react"
-
 import {
-  Card,
-  CardAction,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+  ArrowRight,
+  ChartColumn,
+  ClipboardCheck,
+  Factory,
+  FileText,
+  Leaf,
+  ReceiptText,
+  TrendingUp,
+  Wallet,
+  Zap,
+  type LucideIcon,
+} from "lucide-react"
 
-const SOLAR_SECTIONS = [
+import { Card, CardDescription, CardTitle } from "@/components/ui/card"
+
+type Section = {
+  href: string
+  title: string
+  description: string
+  icon: LucideIcon
+}
+
+const SOLAR_SECTIONS: Section[] = [
   {
     href: "/plants",
     title: "발전소관리",
-    description: "발전소 계약번호·종사업장번호·별칭 등 마스터 정보를 관리합니다.",
-    ready: true,
+    description: "계약번호 · 종사업장번호 · 별칭",
+    icon: Factory,
   },
   {
     href: "/smp",
     title: "SMP",
-    description: "한전 메일 자동 수집, 파싱, PDF 다운로드를 처리합니다.",
-    ready: true,
+    description: "메일 수집 · PDF 파싱 · 다운로드",
+    icon: Zap,
   },
   {
     href: "/rec",
     title: "REC",
-    description: "확정된 SMP 데이터를 이어받아 발전소별 REC 수량·단가를 관리합니다.",
-    ready: true,
+    description: "발전소별 수량 · 단가 입력",
+    icon: Leaf,
   },
   {
     href: "/reports",
     title: "리포트",
-    description: "발전소별·거래처별 통합 매출 뷰와 청구 상태를 확인합니다.",
-    ready: true,
+    description: "발전소 · 거래처별 매출과 청구 상태",
+    icon: ChartColumn,
   },
 ]
 
-const RECEIPTS_SECTIONS = [
+const RECEIPTS_SECTIONS: Section[] = [
   {
     href: "/receipts",
     title: "영수증/세금계산서 정리",
-    description: "귀속월 단위로 영수증·세금계산서 데이터를 검토하고 확정합니다.",
-    ready: true,
+    description: "귀속월별 검토 · 확정",
+    icon: ClipboardCheck,
   },
   {
     href: "/receipts/monthly-receipts",
     title: "월별 영수증 데이터",
-    description: "확정된 영수증 데이터를 카드번호·세부내역·계정과목별로 조회합니다.",
-    ready: true,
+    description: "카드번호 · 세부내역 · 계정과목",
+    icon: ReceiptText,
   },
   {
     href: "/receipts/monthly-invoices",
     title: "월별 세금계산서 데이터",
-    description: "확정된 매출·매입 세금계산서 데이터를 월별로 조회합니다.",
-    ready: true,
+    description: "매출 · 매입 세금계산서 조회",
+    icon: FileText,
   },
   {
     href: "/receipts/outstanding",
     title: "미수·미지급 현황",
-    description: "결제일이 비어 있는 외상매출금·외상매입금·미지급금을 거래처별로 확인합니다.",
-    ready: true,
+    description: "결제일 미입력 건 거래처별 확인",
+    icon: Wallet,
   },
   {
     href: "/receipts/profit-loss",
     title: "손익계산서",
-    description: "연도별·월별 매출·원가·판관비·이익을 확인합니다.",
-    ready: true,
+    description: "매출 · 원가 · 판관비 · 이익",
+    icon: TrendingUp,
   },
 ]
+
+function SectionCard({ section }: { section: Section }) {
+  const Icon = section.icon
+  return (
+    <Link
+      href={section.href}
+      className="group rounded-xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+    >
+      <Card className="h-full gap-3 px-5 py-5 transition-all group-hover:-translate-y-0.5 group-hover:shadow-md group-hover:ring-primary/30">
+        <div className="flex items-start justify-between">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Icon className="size-5" />
+          </div>
+          <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <CardTitle>{section.title}</CardTitle>
+          <CardDescription>{section.description}</CardDescription>
+        </div>
+      </Card>
+    </Link>
+  )
+}
 
 function SectionGroup({
   title,
   sections,
 }: {
   title: string
-  sections: typeof SOLAR_SECTIONS
+  sections: Section[]
 }) {
   return (
-    <div className="flex flex-col gap-4">
-      <h2 className="text-sm font-medium text-muted-foreground">{title}</h2>
-      <div className="flex flex-wrap justify-center gap-4">
+    <section className="flex flex-col gap-4">
+      <h2 className="flex items-center gap-2.5 text-lg font-semibold text-foreground">
+        <span className="h-5 w-1 rounded-full bg-primary" aria-hidden />
+        {title}
+      </h2>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {sections.map((section) => (
-          <Card key={section.href} className="min-h-48 w-72 justify-center">
-            <CardHeader>
-              <CardTitle>{section.title}</CardTitle>
-              <CardDescription>{section.description}</CardDescription>
-              <CardAction>
-                {section.ready ? (
-                  <Button size="sm" render={<Link href={section.href} />}>
-                    이동 <ArrowRight />
-                  </Button>
-                ) : (
-                  <Button variant="outline" size="sm" disabled>
-                    준비 중
-                  </Button>
-                )}
-              </CardAction>
-            </CardHeader>
-          </Card>
+          <SectionCard key={section.href} section={section} />
         ))}
       </div>
-    </div>
+    </section>
   )
 }
 
