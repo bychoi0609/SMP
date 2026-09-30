@@ -15,6 +15,8 @@ import { ClientGroupFilterBar } from "@/components/client-group-filter-bar"
 import { prisma } from "@/lib/prisma"
 import type { Prisma } from "@/generated/prisma/client"
 import { getSmpContractType, SMP_CONTRACT_TYPE_LABEL } from "@/lib/smp-contract-type"
+import { PLANT_OPERATING_STATUS_LABEL } from "@/lib/plant-status"
+import { cn } from "@/lib/utils"
 import { deletePlant } from "./actions"
 import { DeletePlantButton } from "./delete-plant-button"
 import { ExcelUploadDialog } from "./excel-upload-dialog"
@@ -129,24 +131,43 @@ export default async function PlantsPage({
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-14 text-center">순번</TableHead>
+                  <TableHead className="w-20 text-center">계약차수</TableHead>
                   <TableHead className="w-30">발전소명</TableHead>
                   <TableHead className="w-32">계약번호</TableHead>
                   <TableHead className="w-28">SMP계약</TableHead>
                   <TableHead className="w-36">종사업장번호</TableHead>
                   <TableHead className="w-24 text-center">용량(kW)</TableHead>
+                  <TableHead className="w-24 text-center">REC 가중치</TableHead>
                   <TableHead className="w-28 text-center">수평면 일사량</TableHead>
                   <TableHead className="w-24 text-center">관리</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {group.plants.map((plant, index) => (
-                  <TableRow key={plant.id}>
+                  <TableRow
+                    key={plant.id}
+                    className={cn(plant.operatingStatus === "CLOSED" && "opacity-60")}
+                  >
                     <TableCell className="tabular-nums text-muted-foreground">
                       {index + 1}
                     </TableCell>
+                    <TableCell className="text-center tabular-nums">
+                      {plant.contractPhase ? `${plant.contractPhase}차` : "-"}
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-col items-center">
-                        <span className="font-medium">{plant.plantName}</span>
+                        <span className="flex items-center gap-1.5 font-medium">
+                          {plant.plantName}
+                          {plant.operatingStatus !== "ACTIVE" && (
+                            <Badge
+                              variant={
+                                plant.operatingStatus === "CLOSED" ? "secondary" : "outline"
+                              }
+                            >
+                              {PLANT_OPERATING_STATUS_LABEL[plant.operatingStatus]}
+                            </Badge>
+                          )}
+                        </span>
                         {plant.plantAlias && (
                           <span className="text-xs text-muted-foreground">
                             {plant.plantAlias}
@@ -172,6 +193,9 @@ export default async function PlantsPage({
                     </TableCell>
                     <TableCell className="tabular-nums">
                       {plant.capacityKw ? plant.capacityKw.toString() : "-"}
+                    </TableCell>
+                    <TableCell className="text-center tabular-nums">
+                      {plant.recWeight.toString()}
                     </TableCell>
                     <TableCell className="text-center">
                       {plant.irradianceRegion ?? "-"}

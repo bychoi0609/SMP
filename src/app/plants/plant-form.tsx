@@ -25,6 +25,11 @@ import { QuickAddClientGroupDialog } from "./client-groups/quick-add-client-grou
 import type { PlantActionState } from "./actions"
 import { getSmpContractType, SMP_CONTRACT_TYPE_LABEL } from "@/lib/smp-contract-type"
 import { IRRADIANCE_REGIONS } from "@/lib/irradiance-regions"
+import {
+  PLANT_OPERATING_STATUSES,
+  PLANT_OPERATING_STATUS_LABEL,
+  type PlantOperatingStatusValue,
+} from "@/lib/plant-status"
 
 export type PlantFormDefaults = {
   plantName: string
@@ -37,6 +42,9 @@ export type PlantFormDefaults = {
   constructionOrder: number
   clientGroupId: number | null
   irradianceRegion: string
+  contractPhase: number | null
+  recWeight: number
+  operatingStatus: PlantOperatingStatusValue
 }
 
 export type ClientGroupOption = {
@@ -75,6 +83,9 @@ export function PlantForm({
   const smpContractType = getSmpContractType(contractNumber)
   const [irradianceRegion, setIrradianceRegion] = useState(
     defaultValues.irradianceRegion,
+  )
+  const [operatingStatus, setOperatingStatus] = useState(
+    defaultValues.operatingStatus,
   )
 
   return (
@@ -233,6 +244,75 @@ export function PlantForm({
                 aria-invalid={!!fieldErrors.constructionOrder}
               />
               <FieldError errors={toMessages(fieldErrors.constructionOrder)} />
+            </Field>
+
+            <Field data-invalid={!!fieldErrors.contractPhase}>
+              <FieldLabel htmlFor="contractPhase">계약차수</FieldLabel>
+              <Input
+                id="contractPhase"
+                name="contractPhase"
+                type="number"
+                placeholder="예: 1"
+                defaultValue={defaultValues.contractPhase ?? ""}
+                aria-invalid={!!fieldErrors.contractPhase}
+              />
+              <FieldDescription>
+                계약을 맺은 순서예요. 같은 차수 발전소는 실적 보고서에서 함께
+                집계돼요.
+              </FieldDescription>
+              <FieldError errors={toMessages(fieldErrors.contractPhase)} />
+            </Field>
+
+            <Field data-invalid={!!fieldErrors.recWeight}>
+              <FieldLabel htmlFor="recWeight">REC 가중치 *</FieldLabel>
+              <Input
+                id="recWeight"
+                name="recWeight"
+                type="number"
+                step="0.1"
+                required
+                defaultValue={defaultValues.recWeight}
+                aria-invalid={!!fieldErrors.recWeight}
+              />
+              <FieldDescription>
+                예상 REC 수량 = 발전량 × 가중치 ÷ 1,000 (소수점 버림)
+              </FieldDescription>
+              <FieldError errors={toMessages(fieldErrors.recWeight)} />
+            </Field>
+
+            <Field data-invalid={!!fieldErrors.operatingStatus}>
+              <FieldLabel htmlFor="operatingStatus">운영상태</FieldLabel>
+              <Select
+                name="operatingStatus"
+                value={operatingStatus}
+                onValueChange={(value) =>
+                  setOperatingStatus(value as PlantOperatingStatusValue)
+                }
+              >
+                <SelectTrigger
+                  id="operatingStatus"
+                  className="w-full"
+                  aria-invalid={!!fieldErrors.operatingStatus}
+                >
+                  <SelectValue>
+                    {(value: PlantOperatingStatusValue) =>
+                      PLANT_OPERATING_STATUS_LABEL[value]
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {PLANT_OPERATING_STATUSES.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {PLANT_OPERATING_STATUS_LABEL[status]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldDescription>
+                폐지로 바꾸면 SMP·REC 월 작업 표에서 빠지고, 지난 기록은 그대로
+                남아요.
+              </FieldDescription>
+              <FieldError errors={toMessages(fieldErrors.operatingStatus)} />
             </Field>
 
             <Field data-invalid={!!fieldErrors.clientGroupId}>

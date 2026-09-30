@@ -25,6 +25,9 @@ export default async function NewPlantPage() {
     constructionOrder: (lastPlant?.constructionOrder ?? 0) + 1,
     clientGroupId: null,
     irradianceRegion: "",
+    contractPhase: null,
+    recWeight: 1.5,
+    operatingStatus: "ACTIVE",
   }
 
   return (

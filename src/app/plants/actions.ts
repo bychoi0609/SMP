@@ -57,6 +57,9 @@ export async function createPlant(
         constructionOrder: data.constructionOrder,
         clientGroupId: data.clientGroupId,
         irradianceRegion: toNullableString(data.irradianceRegion),
+        contractPhase: data.contractPhase ?? null,
+        recWeight: data.recWeight,
+        operatingStatus: data.operatingStatus,
       },
     })
   } catch {
@@ -86,6 +89,11 @@ export async function updatePlant(
 
   const data = parsed.data
 
+  const before = await prisma.plantMaster.findUniqueOrThrow({
+    where: { id },
+    select: { capacityKw: true },
+  })
+
   try {
     await prisma.plantMaster.update({
       where: { id },
@@ -100,14 +108,43 @@ export async function updatePlant(
         constructionOrder: data.constructionOrder,
         clientGroupId: data.clientGroupId,
         irradianceRegion: toNullableString(data.irradianceRegion),
+        contractPhase: data.contractPhase ?? null,
+        recWeight: data.recWeight,
+        operatingStatus: data.operatingStatus,
       },
     })
   } catch {
     return { error: "계약번호가 이미 등록되어 있습니다. 계약번호를 확인해 주세요." }
   }
 
+  const newCapacity = data.capacityKw ?? null
+  const beforeCapacity = before.capacityKw ? Number(before.capacityKw) : null
+  if (newCapacity !== beforeCapacity) {
+    await refreshUnconfirmedCapacitySnapshots(id, data.clientGroupId, newCapacity)
+  }
+
   revalidatePath("/plants")
   redirect("/plants")
+}
+
+// 발전소 용량이 바뀌면 아직 확정되지 않은 달의 SMP 월 데이터만 새 용량으로 맞춘다.
+// 확정된 달은 당시 용량(증설 전 값 등)을 그대로 보존한다.
+async function refreshUnconfirmedCapacitySnapshots(
+  plantId: number,
+  clientGroupId: number,
+  capacityKw: number | null,
+) {
+  const confirmedMonths = (
+    await prisma.smpMonthlyConfirmation.findMany({
+      where: { clientGroupId, status: "CONFIRMED" },
+      select: { billingYearMonth: true },
+    })
+  ).map((row) => row.billingYearMonth)
+
+  await prisma.smpMonthly.updateMany({
+    where: { plantId, billingYearMonth: { notIn: confirmedMonths } },
+    data: { capacityKw },
+  })
 }
 
 export async function deletePlant(id: number) {
@@ -204,6 +241,7 @@ export async function bulkUploadPlantsAction(
       capacityKw: row.capacityKw,
       irradianceRegion: row.irradianceRegion,
       clientGroupId,
+      contractPhase: row.contractPhase,
     }
 
     // 계약번호가 없는(전력거래소) 발전소는 계약번호로 기존 발전소를 찾을 수
@@ -220,8 +258,15 @@ export async function bulkUploadPlantsAction(
         data: {
           ...data,
           constructionOrder: row.constructionOrder ?? existing.constructionOrder,
+          // 빈칸이면 기존 값을 유지한다.
+          recWeight: row.recWeight ?? existing.recWeight,
+          operatingStatus: row.operatingStatus ?? existing.operatingStatus,
         },
       })
+      const beforeCapacity = existing.capacityKw ? Number(existing.capacityKw) : null
+      if (row.capacityKw !== beforeCapacity) {
+        await refreshUnconfirmedCapacitySnapshots(existing.id, clientGroupId, row.capacityKw)
+      }
       updated++
     } else {
       const constructionOrder = row.constructionOrder ?? nextOrder++
@@ -230,6 +275,8 @@ export async function bulkUploadPlantsAction(
           ...data,
           contractNumber: row.contractNumber,
           constructionOrder,
+          recWeight: row.recWeight ?? 1.5,
+          operatingStatus: row.operatingStatus ?? "ACTIVE",
         },
       })
       created++

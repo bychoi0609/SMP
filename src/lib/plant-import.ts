@@ -2,8 +2,14 @@ import "server-only"
 import * as XLSX from "xlsx"
 
 import { IRRADIANCE_REGIONS, isIrradianceRegion } from "@/lib/irradiance-regions"
+import {
+  PLANT_OPERATING_STATUS_LABEL,
+  parsePlantOperatingStatusLabel,
+  type PlantOperatingStatusValue,
+} from "@/lib/plant-status"
 
 // 발전소 일괄 업로드용 엑셀 컬럼 순서 — 샘플 다운로드와 업로드 파싱이 항상 같은 순서를 쓴다.
+// 새 컬럼은 맨 뒤에만 붙여서, 예전 양식으로 만든 파일도 그대로 올릴 수 있게 한다.
 export const PLANT_IMPORT_HEADERS = [
   "발전소명",
   "발전소 별칭(비고용)",
@@ -15,6 +21,9 @@ export const PLANT_IMPORT_HEADERS = [
   `수평면 일사량 지역(${IRRADIANCE_REGIONS.join("/")} 중 선택, 비워도 됨)`,
   "건설순서(비우면 자동 배정)",
   "거래처명(등록된 거래처와 동일해야 함)",
+  "계약차수(숫자, 비워도 됨)",
+  "REC 가중치(비우면 1.5)",
+  "운영상태(운영/정지/폐지, 비우면 운영)",
 ] as const
 
 export const PLANT_SAMPLE_ROW = [
@@ -28,6 +37,9 @@ export const PLANT_SAMPLE_ROW = [
   "경주",
   "",
   "키스트론",
+  "1",
+  "1.5",
+  "운영",
 ]
 
 export type PlantImportRow = {
@@ -44,6 +56,10 @@ export type PlantImportRow = {
   irradianceRegion: string | null
   constructionOrder: number | null
   clientGroupName: string
+  contractPhase: number | null
+  // 비어 있으면 null — 신규 등록은 기본값(1.5 / 운영), 기존 발전소는 현재 값 유지.
+  recWeight: number | null
+  operatingStatus: PlantOperatingStatusValue | null
 }
 
 export type PlantImportRowError = {
@@ -85,6 +101,9 @@ export function parsePlantExcel(buffer: Buffer): {
     const subBizNumber = cell(row, 3)
     const irradianceRegion = cell(row, 7)
     const clientGroupName = cell(row, 9)
+    const contractPhaseText = cell(row, 10)
+    const recWeightText = cell(row, 11)
+    const operatingStatusText = cell(row, 12)
 
     if (!plantName || !clientGroupName) {
       errors.push({
@@ -112,6 +131,38 @@ export function parsePlantExcel(buffer: Buffer): {
       return
     }
 
+    const contractPhase = toNumberOrNull(contractPhaseText)
+    if (
+      contractPhaseText &&
+      (contractPhase === null || !Number.isInteger(contractPhase) || contractPhase < 1)
+    ) {
+      errors.push({
+        rowNumber,
+        reason: "계약차수는 1 이상의 정수여야 합니다 (누락으로 건너뜀)",
+      })
+      return
+    }
+
+    const recWeight = toNumberOrNull(recWeightText)
+    if (recWeightText && (recWeight === null || recWeight <= 0)) {
+      errors.push({
+        rowNumber,
+        reason: "REC 가중치는 0보다 큰 숫자여야 합니다 (누락으로 건너뜀)",
+      })
+      return
+    }
+
+    const operatingStatus = operatingStatusText
+      ? parsePlantOperatingStatusLabel(operatingStatusText)
+      : null
+    if (operatingStatusText && !operatingStatus) {
+      errors.push({
+        rowNumber,
+        reason: "운영상태 값이 올바르지 않습니다(운영/정지/폐지 중 선택, 누락으로 건너뜀)",
+      })
+      return
+    }
+
     rows.push({
       plantName,
       plantAlias: cell(row, 1) || null,
@@ -124,6 +175,9 @@ export function parsePlantExcel(buffer: Buffer): {
       irradianceRegion: irradianceRegion || null,
       constructionOrder: toNumberOrNull(cell(row, 8)),
       clientGroupName,
+      contractPhase,
+      recWeight,
+      operatingStatus,
     })
   })
 
@@ -156,6 +210,9 @@ export function buildPlantExportWorkbook(rows: PlantExportRow[]): Buffer {
       row.irradianceRegion ?? "",
       row.constructionOrder ?? "",
       row.clientGroupName,
+      row.contractPhase ?? "",
+      row.recWeight ?? "",
+      row.operatingStatus ? PLANT_OPERATING_STATUS_LABEL[row.operatingStatus] : "",
     ]),
   ]
   const sheet = XLSX.utils.aoa_to_sheet(aoa)

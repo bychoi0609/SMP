@@ -15,6 +15,7 @@ import {
 import { prisma } from "@/lib/prisma"
 import { formatAmount, formatNumber } from "@/lib/format"
 import { computeBillingStatus } from "@/lib/billing-status"
+import { daysInMonth } from "@/lib/date"
 
 function badgeVariant(status: string) {
   if (status === "확정") return "secondary" as const
@@ -93,9 +94,11 @@ export default async function PlantReportPage({
               const generationKwh = row.generationKwh
                 ? Number(row.generationKwh)
                 : null
+              // 그달 계산에 쓴 용량(스냅샷)으로, SMP 화면과 같이 일수로 나눈 일평균 발전시간.
+              const monthCapacityKw = row.capacityKw ? Number(row.capacityKw) : capacityKw
               const generationHours =
-                generationKwh !== null && capacityKw
-                  ? generationKwh / capacityKw
+                generationKwh !== null && monthCapacityKw
+                  ? generationKwh / monthCapacityKw / daysInMonth(row.billingYearMonth)
                   : null
               const rec = recByMonth.get(row.billingYearMonth)
               const supplyAmount = row.supplyAmount ? Number(row.supplyAmount) : 0

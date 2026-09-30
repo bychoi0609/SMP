@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { IRRADIANCE_REGIONS } from "@/lib/irradiance-regions"
+import { PLANT_OPERATING_STATUSES } from "@/lib/plant-status"
 
 // PRD §7 비기능요구사항: 세금계산서 필수 입력값(사업자번호, 종사업장번호 등)
 // 누락 시 저장 차단 — 여기서 required로 지정한 필드가 그 기준선.
@@ -36,6 +37,23 @@ const plantFormBaseSchema = z.object({
   irradianceRegion: z
     .union([z.enum(IRRADIANCE_REGIONS), z.literal("")])
     .optional(),
+  // 계약차수 — 비워둘 수 있다(실적 보고서에서 "차수 미지정"으로 묶임).
+  contractPhase: z.preprocess(
+    (val) => (val === "" || val === undefined ? undefined : val),
+    z.coerce
+      .number({ error: "숫자를 입력해 주세요." })
+      .int("정수를 입력해 주세요.")
+      .positive("1 이상의 값을 입력해 주세요.")
+      .optional(),
+  ),
+  // REC 가중치 — 폼에 필드가 없는 경로(검토필요 → 발전소 등록)에서는 기본 1.5.
+  recWeight: z.preprocess(
+    (val) => (val === "" || val === undefined ? 1.5 : val),
+    z.coerce
+      .number({ error: "숫자를 입력해 주세요." })
+      .positive("0보다 큰 값을 입력해 주세요."),
+  ),
+  operatingStatus: z.enum(PLANT_OPERATING_STATUSES).default("ACTIVE"),
   clientGroupId: z.coerce
     .number({ error: "거래처를 선택해 주세요." })
     .int()

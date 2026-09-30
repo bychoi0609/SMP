@@ -170,6 +170,9 @@ export function NeedsReviewPanel({
                         constructionOrder: nextConstructionOrder,
                         clientGroupId: null,
                         irradianceRegion: "",
+                        contractPhase: null,
+                        recWeight: 1.5,
+                        operatingStatus: "ACTIVE",
                       }}
                     />
                   </div>

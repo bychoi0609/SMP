@@ -79,6 +79,12 @@ model PlantMaster {
   // 수평면 일사량 매칭 기준 지역 (경주/양산/포항/함양/의령/북창원/수원/대전/부산/울산 중 하나).
   // SolarIrradianceMonthly의 지역·귀속월별 값을 이 지역으로 조회해 보고서에 채운다.
   irradianceRegion  String?
+  // 계약차수 — 계약을 맺은 순서. 여러 발전소가 같은 차수를 공유하며(예: 1차 11곳),
+  // 실적 보고서의 차수별 집계 기준이 된다. 건설순서(발전소별 고유 순번)와는 별개.
+  contractPhase     Int?
+  // REC 가중치. 예상 REC수량 = trunc(발전량 × 가중치 ÷ 1000). see estimateRecQuantity.
+  recWeight         Decimal  @default(1.5)
+  operatingStatus   PlantOperatingStatus @default(ACTIVE)
 
   clientGroupId Int
   clientGroup   ClientGroup @relation(fields: [clientGroupId], references: [id])
@@ -90,6 +96,14 @@ model PlantMaster {
   recMonthlies RecMonthly[]
 
   @@map("plant_master")
+}
+
+enum PlantOperatingStatus {
+  ACTIVE // 운영
+  SUSPENDED // 정지 (리파워링 등 일시 중단 — 월 작업 표에는 계속 보임)
+  CLOSED // 폐지 (월 작업 표에서 숨김, 과거 기록은 보존)
+
+  @@map("plant_operating_status")
 }
 
 enum ParseStatus {
@@ -125,6 +139,9 @@ model SmpMonthly {
   currReading      Decimal? // 당월지침
   meterMultiplier  Decimal? // 계기배수
   generationKwh    Decimal? // 발전량
+  // 이 달 발전시간 계산에 쓰는 설비용량(kW) 스냅샷. 발전소에 연결될 때 당시 용량을
+  // 기록하며, 이후 발전소 용량을 바꿔도 확정된 달은 이 값을 유지한다(증설 이력 보존).
+  capacityKw       Decimal?
 
   baseUnitPrice Decimal? // 기준단가
   smpUnitPrice  Decimal? // SMP단가

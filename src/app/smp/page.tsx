@@ -1,5 +1,6 @@
 import { ClientGroupFilterBar } from "@/components/client-group-filter-bar"
 import { prisma } from "@/lib/prisma"
+import { REPORT_PLANT_SELECT, toReportPlant } from "@/lib/report-plant"
 import { NeedsReviewPanel } from "./needs-review-panel"
 import { CollectWorkspacePanel } from "./collect-workspace-panel"
 
@@ -35,6 +36,9 @@ export default async function SmpPage({
         ? prisma.plantMaster.findMany({
             where: {
               clientGroupId,
+              // 월 기준 정확한 목록은 화면이 월을 정한 뒤 다시 불러온다. 초기값에서는
+              // 폐지 발전소만 뺀다.
+              operatingStatus: { not: "CLOSED" },
               ...(query
                 ? {
                     OR: [
@@ -45,14 +49,7 @@ export default async function SmpPage({
                 : {}),
             },
             orderBy: { constructionOrder: "asc" },
-            select: {
-              id: true,
-              plantName: true,
-              plantAlias: true,
-              capacityKw: true,
-              irradianceRegion: true,
-              contractNumber: true,
-            },
+            select: REPORT_PLANT_SELECT,
           })
         : Promise.resolve([]),
     ])
@@ -72,10 +69,7 @@ export default async function SmpPage({
     supplyAmount: row.supplyAmount ? Number(row.supplyAmount) : null,
     mailFolder: row.mailFolder,
   }))
-  const initialPlantRows = initialPlants.map((plant) => ({
-    ...plant,
-    capacityKw: plant.capacityKw ? Number(plant.capacityKw) : null,
-  }))
+  const initialPlantRows = initialPlants.map(toReportPlant)
 
   return (
     <div className="flex flex-col gap-8">

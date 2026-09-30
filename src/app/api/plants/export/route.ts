@@ -22,6 +22,9 @@ export async function GET() {
     irradianceRegion: plant.irradianceRegion,
     constructionOrder: plant.constructionOrder,
     clientGroupName: plant.clientGroup.name,
+    contractPhase: plant.contractPhase,
+    recWeight: Number(plant.recWeight),
+    operatingStatus: plant.operatingStatus,
   }))
 
   const buffer = buildPlantExportWorkbook(rows)

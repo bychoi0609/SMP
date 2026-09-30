@@ -3,7 +3,13 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ClientGroupFilterBar } from "@/components/client-group-filter-bar"
 import { prisma } from "@/lib/prisma"
-import { getSmpReportRowsAction, getSolarIrradianceMonthlyAction } from "../smp/actions"
+import { visiblePlantWhere } from "@/lib/plant-status"
+import { REPORT_PLANT_SELECT, toReportPlant } from "@/lib/report-plant"
+import {
+  getSmpReportRowsAction,
+  getSolarIrradianceMonthlyAction,
+  type ReportPlant,
+} from "../smp/actions"
 import { MonthPicker } from "./month-picker"
 import { RecGrid } from "./rec-grid"
 
@@ -39,14 +45,7 @@ export default async function RecPage({
   const billingYearMonth =
     monthParam && months.includes(monthParam) ? monthParam : months[0]
 
-  let plants: {
-    id: number
-    plantName: string
-    plantAlias: string | null
-    capacityKw: number | null
-    irradianceRegion: string | null
-    contractNumber: string | null
-  }[] = []
+  let plants: ReportPlant[] = []
   let reportRows: Awaited<ReturnType<typeof getSmpReportRowsAction>> = []
   let irradianceByRegion: Record<string, number | null> = {}
 
@@ -66,33 +65,28 @@ export default async function RecPage({
         ? prisma.plantMaster.findMany({
             where: {
               clientGroupId: { in: confirmedClientGroupIds },
-              ...(query
-                ? {
-                    OR: [
-                      { plantName: { contains: query } },
-                      { plantAlias: { contains: query } },
-                    ],
-                  }
-                : {}),
+              AND: [
+                visiblePlantWhere(billingYearMonth),
+                ...(query
+                  ? [
+                      {
+                        OR: [
+                          { plantName: { contains: query } },
+                          { plantAlias: { contains: query } },
+                        ],
+                      },
+                    ]
+                  : []),
+              ],
             },
             orderBy: { constructionOrder: "asc" },
-            select: {
-              id: true,
-              plantName: true,
-              plantAlias: true,
-              capacityKw: true,
-              irradianceRegion: true,
-              contractNumber: true,
-            },
+            select: REPORT_PLANT_SELECT,
           })
         : Promise.resolve([]),
       getSmpReportRowsAction(billingYearMonth),
       getSolarIrradianceMonthlyAction(billingYearMonth),
     ])
-    plants = plantRows.map((plant) => ({
-      ...plant,
-      capacityKw: plant.capacityKw ? Number(plant.capacityKw) : null,
-    }))
+    plants = plantRows.map(toReportPlant)
     reportRows = rows
     irradianceByRegion = irradiance
   }

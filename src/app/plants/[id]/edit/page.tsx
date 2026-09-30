@@ -51,6 +51,9 @@ export default async function EditPlantPage({
           constructionOrder: plant.constructionOrder,
           clientGroupId: plant.clientGroupId,
           irradianceRegion: plant.irradianceRegion ?? "",
+          contractPhase: plant.contractPhase,
+          recWeight: Number(plant.recWeight),
+          operatingStatus: plant.operatingStatus,
         }}
         clientGroups={clientGroups}
         submitLabel="저장"

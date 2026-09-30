@@ -17,6 +17,7 @@ import {
   getDisplayRecQuantity,
   getEffectiveSmpUnitPrice,
   getGenerationHours,
+  getRowCapacity,
   tdCell,
   thCell,
   toExportRow,
@@ -42,6 +43,7 @@ function emptyReportRow(plantId: number): ReportRow {
     recUnitPrice: null,
     recAmount: null,
     recStatus: null,
+    capacityKw: null,
   }
 }
 
@@ -107,7 +109,10 @@ export function RecGrid({
     })
   }
 
-  const totalCapacity = plants.reduce((sum, p) => sum + (p.capacityKw ?? 0), 0)
+  const totalCapacity = plants.reduce(
+    (sum, p) => sum + (getRowCapacity(p, rows.get(p.id)) ?? 0),
+    0,
+  )
   const totals = plants.reduce(
     (acc, plant) => {
       const row = rows.get(plant.id)
@@ -206,7 +211,7 @@ export function RecGrid({
               const row = rows.get(plant.id)
               const generationKwh = row?.generationKwh ?? null
               const generationHours = getGenerationHours(
-                plant,
+                getRowCapacity(plant, row),
                 generationKwh,
                 month,
               )
@@ -228,7 +233,7 @@ export function RecGrid({
                     {plant.plantAlias ?? plant.plantName}
                   </td>
                   <td className={tdCell}>
-                    {formatNumber(plant.capacityKw, 2)}
+                    {formatNumber(getRowCapacity(plant, row), 2)}
                   </td>
                   <td className={tdCell}>{formatAmount(generationKwh)}</td>
                   <td className={tdCell}>

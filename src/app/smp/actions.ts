@@ -10,6 +10,8 @@ import { plantFormSchema } from "@/lib/validations/plant"
 import { smpReportCellSchema } from "@/lib/validations/smp"
 import { representativePriceFormSchema } from "@/lib/validations/rec"
 import { IRRADIANCE_REGIONS, isIrradianceRegion } from "@/lib/irradiance-regions"
+import { visiblePlantWhere, type PlantOperatingStatusValue } from "@/lib/plant-status"
+import { REPORT_PLANT_SELECT, toReportPlant } from "@/lib/report-plant"
 import {
   buildSmpReportExportWorkbook,
   type SmpReportExportRow,
@@ -45,9 +47,13 @@ export async function assignPlantAction(
   smpMonthlyId: number,
   plantId: number,
 ) {
+  const plant = await prisma.plantMaster.findUniqueOrThrow({
+    where: { id: plantId },
+    select: { capacityKw: true },
+  })
   await prisma.smpMonthly.update({
     where: { id: smpMonthlyId },
-    data: { plantId, parseStatus: "OK" },
+    data: { plantId, parseStatus: "OK", capacityKw: plant.capacityKw },
   })
   revalidatePath("/smp")
   revalidatePath("/")
@@ -87,11 +93,14 @@ export async function createPlantFromSmpAction(
         capacityKw: data.capacityKw ?? null,
         constructionOrder: data.constructionOrder,
         clientGroupId: data.clientGroupId,
+        contractPhase: data.contractPhase ?? null,
+        recWeight: data.recWeight,
+        operatingStatus: data.operatingStatus,
       },
     })
     await prisma.smpMonthly.update({
       where: { id: smpMonthlyId },
-      data: { plantId: plant.id, parseStatus: "OK" },
+      data: { plantId: plant.id, parseStatus: "OK", capacityKw: plant.capacityKw },
     })
   } catch {
     return { error: "계약번호가 이미 등록되어 있습니다. 계약번호를 확인해 주세요." }
@@ -163,7 +172,7 @@ export async function bulkCreatePlantsFromSmpAction(
       nextOrder += 1
       await prisma.smpMonthly.update({
         where: { id: row.id },
-        data: { plantId: plant.id, parseStatus: "OK" },
+        data: { plantId: plant.id, parseStatus: "OK", capacityKw: plant.capacityKw },
       })
       created += 1
     } catch {
@@ -187,6 +196,8 @@ export type ReportRow = {
   recUnitPrice: number | null
   recAmount: number | null
   recStatus: "TENTATIVE" | "CONFIRMED" | null
+  // 이 달 계산에 쓰는 설비용량 스냅샷. 없으면 발전소 현재 용량을 쓴다(getRowCapacity).
+  capacityKw: number | null
 }
 
 export type ReportPlant = {
@@ -196,6 +207,8 @@ export type ReportPlant = {
   capacityKw: number | null
   irradianceRegion: string | null
   contractNumber: string | null
+  recWeight: number
+  operatingStatus: PlantOperatingStatusValue
 }
 
 // 보고서 모달에 표시할 발전소 목록. 해당 귀속월에 실제로 수집된(파싱 성공)
@@ -229,20 +242,10 @@ export async function getReportPlantsAction(
   const plants = await prisma.plantMaster.findMany({
     where,
     orderBy: { constructionOrder: "asc" },
-    select: {
-      id: true,
-      plantName: true,
-      plantAlias: true,
-      capacityKw: true,
-      irradianceRegion: true,
-      contractNumber: true,
-    },
+    select: REPORT_PLANT_SELECT,
   })
 
-  return plants.map((plant) => ({
-    ...plant,
-    capacityKw: plant.capacityKw ? Number(plant.capacityKw) : null,
-  }))
+  return plants.map(toReportPlant)
 }
 
 // 보고서 모달의 귀속월별 발전소 데이터셀 채우기용. SMP는 파싱 성공(OK) 건만,
@@ -270,6 +273,7 @@ export async function getSmpReportRowsAction(
       recUnitPrice: rec ? Number(rec.unitPrice) : null,
       recAmount: rec ? Number(rec.amount) : null,
       recStatus: rec ? rec.status : null,
+      capacityKw: row.capacityKw ? Number(row.capacityKw) : null,
     }
   })
 }
@@ -291,13 +295,19 @@ export async function updateSmpReportCellAction(
   }
 
   try {
+    const plant = await prisma.plantMaster.findUniqueOrThrow({
+      where: { id: plantId },
+      select: { capacityKw: true },
+    })
     await prisma.smpMonthly.upsert({
       where: { plantId_billingYearMonth: { plantId, billingYearMonth } },
       update: { [field]: parsed.data.value },
+      // 새로 만드는 행에는 당시 발전소 용량을 스냅샷으로 남긴다.
       create: {
         plantId,
         billingYearMonth,
         parseStatus: "OK",
+        capacityKw: plant.capacityKw,
         [field]: parsed.data.value,
       },
     })
@@ -458,30 +468,24 @@ export async function resetSmpDataAction(): Promise<{ deleted: number }> {
 // 추정 없음), 확정 단위(거래처+귀속월)와 항상 일치시킨다.
 export async function getCollectionPlantsAction(
   clientGroupId: number,
+  billingYearMonth: string,
   query?: string,
 ): Promise<ReportPlant[]> {
   const plants = await prisma.plantMaster.findMany({
     where: {
       clientGroupId,
-      ...(query
-        ? { OR: [{ plantName: { contains: query } }, { plantAlias: { contains: query } }] }
-        : {}),
+      AND: [
+        visiblePlantWhere(billingYearMonth),
+        ...(query
+          ? [{ OR: [{ plantName: { contains: query } }, { plantAlias: { contains: query } }] }]
+          : []),
+      ],
     },
     orderBy: { constructionOrder: "asc" },
-    select: {
-      id: true,
-      plantName: true,
-      plantAlias: true,
-      capacityKw: true,
-      irradianceRegion: true,
-      contractNumber: true,
-    },
+    select: REPORT_PLANT_SELECT,
   })
 
-  return plants.map((plant) => ({
-    ...plant,
-    capacityKw: plant.capacityKw ? Number(plant.capacityKw) : null,
-  }))
+  return plants.map(toReportPlant)
 }
 
 export type SmpCollectionStatusValue = "DRAFT" | "CONFIRMED"

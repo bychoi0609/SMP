@@ -279,6 +279,8 @@ async function processCandidate({
     await prisma.smpMonthly.create({
       data: {
         plantId: matchedPlant?.id ?? null,
+        // 설비용량 스냅샷 — 매칭 실패 시에는 발전소 연결 시점에 채운다.
+        capacityKw: matchedPlant?.capacityKw ?? null,
         extractedPlantName,
         extractedContractNumber: parsed.contractNumber,
         extractedSubBizNumber: parsed.subBizNumber,

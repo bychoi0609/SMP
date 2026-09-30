@@ -26,6 +26,7 @@ import {
   getDisplayRecQuantity,
   getEffectiveSmpUnitPrice,
   getGenerationHours,
+  getRowCapacity,
   tdCell,
   thCell,
   toExportRow,
@@ -82,7 +83,7 @@ export function CollectionWorkspace({
     startLoading(async () => {
       const [collectionPlants, result, irradiance, defaultPrice, collectionStatus] =
         await Promise.all([
-          getCollectionPlantsAction(clientGroupId, query),
+          getCollectionPlantsAction(clientGroupId, month, query),
           getSmpReportRowsAction(month),
           getSolarIrradianceMonthlyAction(month),
           getRecDefaultPriceAction(month),
@@ -107,6 +108,7 @@ export function CollectionWorkspace({
       recUnitPrice: null,
       recAmount: null,
       recStatus: null,
+      capacityKw: null,
     }
   }
 
@@ -222,7 +224,10 @@ export function CollectionWorkspace({
     })
   }
 
-  const totalCapacity = plants.reduce((sum, p) => sum + (p.capacityKw ?? 0), 0)
+  const totalCapacity = plants.reduce(
+    (sum, p) => sum + (getRowCapacity(p, rows.get(p.id)) ?? 0),
+    0,
+  )
   const totals = plants.reduce(
     (acc, plant) => {
       const row = rows.get(plant.id)
@@ -398,7 +403,7 @@ export function CollectionWorkspace({
               const row = rows.get(plant.id)
               const generationKwh = row?.generationKwh ?? null
               const generationHours = getGenerationHours(
-                plant,
+                getRowCapacity(plant, row),
                 generationKwh,
                 month,
               )
@@ -420,7 +425,7 @@ export function CollectionWorkspace({
                     {plant.plantAlias ?? plant.plantName}
                   </td>
                   <td className={tdCell}>
-                    {formatNumber(plant.capacityKw, 2)}
+                    {formatNumber(getRowCapacity(plant, row), 2)}
                   </td>
                   <td className={tdCell}>
                     {renderGridCell("generationKwh", 0, index, plant, row)}

@@ -55,10 +55,7 @@ export function getDisplayRecQuantity(
   if (row?.generationKwh === null || row?.generationKwh === undefined) {
     return null
   }
-  return estimateRecQuantity(
-    row.generationKwh,
-    plant.plantAlias ?? plant.plantName,
-  )
+  return estimateRecQuantity(row.generationKwh, plant.recWeight)
 }
 
 // REC매출 = 같은 행의 REC수량(확정 또는 예상치) × REC단가. 단가가 아직
@@ -78,14 +75,23 @@ export function getDisplayRecAmount(
   return quantity * row.recUnitPrice
 }
 
+// 해당 월 계산에 쓰는 설비용량. 월 데이터에 저장된 당시 용량(스냅샷)을 우선하고,
+// 아직 월 데이터가 없으면 발전소의 현재 용량을 쓴다.
+export function getRowCapacity(
+  plant: ReportPlant,
+  row: ReportRow | undefined,
+): number | null {
+  return row?.capacityKw ?? plant.capacityKw
+}
+
 // 발전량과 용량으로부터 해당 월의 일평균 발전시간을 구한다.
 export function getGenerationHours(
-  plant: ReportPlant,
+  capacityKw: number | null,
   generationKwh: number | null,
   month: string,
 ): number | null {
-  if (generationKwh === null || !plant.capacityKw) return null
-  return generationKwh / plant.capacityKw / daysInMonth(month)
+  if (generationKwh === null || !capacityKw) return null
+  return generationKwh / capacityKw / daysInMonth(month)
 }
 
 // 한국전력거래소(KPX)와 SMP계약된 발전소는 SMP단가를 직접 입력하지 않고
@@ -112,9 +118,9 @@ export function toExportRow(
   const recAmount = getDisplayRecAmount(plant, row)
   return {
     plantName: plant.plantAlias ?? plant.plantName,
-    capacityKw: plant.capacityKw,
+    capacityKw: getRowCapacity(plant, row),
     generationKwh,
-    generationHours: getGenerationHours(plant, generationKwh, month),
+    generationHours: getGenerationHours(getRowCapacity(plant, row), generationKwh, month),
     irradiance: plant.irradianceRegion
       ? (irradianceByRegion[plant.irradianceRegion] ?? null)
       : null,
