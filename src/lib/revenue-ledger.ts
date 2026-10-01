@@ -27,6 +27,7 @@ export type LedgerCell = {
   capacityKw: number | null
   generationKwh: number | null
   generationHours: number | null
+  irradiance: number | null // 수평면일사량(발전소 지역 기준, 미입력이면 null)
   smpUnitPrice: number | null
   smpAmount: number | null
   recQuantity: number | null
@@ -40,6 +41,7 @@ export type LedgerCell = {
 export type LedgerSummary = {
   generationKwh: number
   generationHours: number | null
+  irradiance: number | null
   smpUnitPrice: number | null
   smpAmount: number
   recQuantity: number
@@ -54,6 +56,7 @@ export type LedgerPlant = {
   name: string // 별칭 우선
   plantName: string
   capacityKw: number | null
+  irradianceRegion: string | null
   contractPhase: number | null
   constructionOrder: number
   clientGroupId: number
@@ -82,13 +85,15 @@ function sumOf(cells: LedgerCell[], pick: (c: LedgerCell) => number | null) {
   return cells.reduce((acc, c) => acc + (pick(c) ?? 0), 0)
 }
 
-// 한 발전소의 연간 "총합(평균)". 발전시간·SMP단가는 데이터가 있는 달의 평균
-// (1번 엑셀 26년 시트 방식), 나머지는 합계.
+// 한 발전소의 기간(연간·반기) 합계. 발전시간·SMP단가는 데이터가 있는 달의 평균
+// (1번 엑셀 26년 시트 방식), 일사량과 나머지는 합계(2번 엑셀과 동일).
 export function summarizeMonths(cells: (LedgerCell | null)[]): LedgerSummary {
   const filled = cells.filter((c): c is LedgerCell => c !== null)
+  const irradiance = filled.filter((c) => c.irradiance !== null)
   return {
     generationKwh: sumOf(filled, (c) => c.generationKwh),
     generationHours: average(filled.map((c) => c.generationHours)),
+    irradiance: irradiance.length > 0 ? sumOf(irradiance, (c) => c.irradiance) : null,
     smpUnitPrice: average(filled.map((c) => c.smpUnitPrice)),
     smpAmount: sumOf(filled, (c) => c.smpAmount),
     recQuantity: sumOf(filled, (c) => c.recQuantity),
@@ -100,7 +105,7 @@ export function summarizeMonths(cells: (LedgerCell | null)[]): LedgerSummary {
 }
 
 // 같은 달 여러 발전소의 합계. 발전시간은 합계 발전량 ÷ 합계 용량 ÷ 일수,
-// SMP단가는 합계 SMP금액 ÷ 합계 발전량(REC 탭 합계 줄과 같은 방식).
+// SMP단가는 합계 SMP금액 ÷ 합계 발전량(REC 탭 합계 줄과 같은 방식), 일사량은 평균.
 export function summarizePlants(cells: (LedgerCell | null)[]): LedgerSummary {
   const filled = cells.filter((c): c is LedgerCell => c !== null)
   const generationKwh = sumOf(filled, (c) => c.generationKwh)
@@ -114,6 +119,7 @@ export function summarizePlants(cells: (LedgerCell | null)[]): LedgerSummary {
     generationKwh,
     generationHours:
       month && capacity > 0 ? generationKwh / capacity / daysInMonth(month) : null,
+    irradiance: average(filled.map((c) => c.irradiance)),
     smpUnitPrice: generationKwh > 0 ? smpAmount / generationKwh : null,
     smpAmount,
     recQuantity: sumOf(filled, (c) => c.recQuantity),
@@ -124,8 +130,8 @@ export function summarizePlants(cells: (LedgerCell | null)[]): LedgerSummary {
   }
 }
 
-// 여러 발전소의 연간 합계 칸. 발전시간·SMP단가는 월 합계 값들의 평균으로
-// 발전소 행의 연간 규칙과 맞춘다.
+// 여러 발전소의 기간(연간·반기) 합계 칸. 월 합계들을 받아, 발전시간·SMP단가는
+// 월 값들의 평균으로 발전소 행의 기간 규칙과 맞추고 일사량은 합계로 둔다.
 export function summarizeYearTotal(monthTotals: LedgerSummary[]): LedgerSummary {
   const filled = monthTotals.filter((m) => m.count > 0)
   const sum = (pick: (m: LedgerSummary) => number) =>
@@ -133,6 +139,9 @@ export function summarizeYearTotal(monthTotals: LedgerSummary[]): LedgerSummary 
   return {
     generationKwh: sum((m) => m.generationKwh),
     generationHours: average(filled.map((m) => m.generationHours)),
+    irradiance: filled.some((m) => m.irradiance !== null)
+      ? sum((m) => m.irradiance ?? 0)
+      : null,
     smpUnitPrice: average(filled.map((m) => m.smpUnitPrice)),
     smpAmount: sum((m) => m.smpAmount),
     recQuantity: sum((m) => m.recQuantity),
@@ -150,6 +159,7 @@ function buildCell(
   row: ReportRow,
   month: string,
   status: BillingStatus,
+  irradiance: number | null,
 ): LedgerCell {
   const capacityKw = getRowCapacity(plant, row)
   const recAmount = getDisplayRecAmount(plant, row)
@@ -159,6 +169,7 @@ function buildCell(
     capacityKw,
     generationKwh: row.generationKwh,
     generationHours: getGenerationHours(capacityKw, row.generationKwh, month),
+    irradiance,
     smpUnitPrice: getEffectiveSmpUnitPrice(plant, row, row.generationKwh),
     smpAmount,
     recQuantity: getDisplayRecQuantity(plant, row),
@@ -215,7 +226,7 @@ export async function loadRevenueYear(
   })
   const plantIds = plants.map((p) => p.id)
 
-  const [smpRows, recRows, confirmedSmpKeys] = await Promise.all([
+  const [smpRows, recRows, confirmedSmpKeys, irradianceRows] = await Promise.all([
     prisma.smpMonthly.findMany({
       where: {
         plantId: { in: plantIds },
@@ -230,7 +241,13 @@ export async function loadRevenueYear(
       },
     }),
     getConfirmedSmpKeys(),
+    prisma.solarIrradianceMonthly.findMany({
+      where: { billingYearMonth: { startsWith: yearPrefix } },
+    }),
   ])
+  const irradianceByKey = new Map(
+    irradianceRows.map((r) => [`${r.region}-${r.billingYearMonth}`, Number(r.value)]),
+  )
 
   const recByKey = new Map(
     recRows.map((r) => [`${r.plantId}-${r.billingYearMonth}`, r]),
@@ -272,7 +289,10 @@ export async function loadRevenueYear(
           },
         ),
       )
-      months[Number(month.slice(5, 7)) - 1] = buildCell(plant, row, month, status)
+      const irradiance = p.irradianceRegion
+        ? (irradianceByKey.get(`${p.irradianceRegion}-${month}`) ?? null)
+        : null
+      months[Number(month.slice(5, 7)) - 1] = buildCell(plant, row, month, status, irradiance)
     }
 
     return {
@@ -280,6 +300,7 @@ export async function loadRevenueYear(
       name: p.plantAlias ?? p.plantName,
       plantName: p.plantName,
       capacityKw: plant.capacityKw,
+      irradianceRegion: p.irradianceRegion,
       contractPhase: p.contractPhase,
       constructionOrder: p.constructionOrder,
       clientGroupId: p.clientGroupId,

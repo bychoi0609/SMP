@@ -1,4 +1,7 @@
 import Link from "next/link"
+import { FileBarChart } from "lucide-react"
+
+import { Button } from "@/components/ui/button"
 
 import { ClientGroupFilterBar } from "@/components/client-group-filter-bar"
 import { prisma } from "@/lib/prisma"
@@ -152,10 +155,26 @@ export default async function ReportsPage({
             보고서와 같은 월별 원장이 열려요.
           </p>
         </div>
-        <PlantPicker
-          plants={ledger.map((p) => ({ id: p.id, label: p.name }))}
-          year={year}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <PlantPicker
+            plants={ledger.map((p) => ({ id: p.id, label: p.name }))}
+            year={year}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            render={
+              <Link
+                href={`/reports/performance?${new URLSearchParams({
+                  year,
+                  ...(clientParam ? { client: clientParam } : {}),
+                }).toString()}`}
+              />
+            }
+          >
+            <FileBarChart /> 실적 보고서
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
