@@ -216,6 +216,9 @@ model SmpMonthlyConfirmation {
 
   status      SmpCollectionStatus @default(DRAFT)
   confirmedAt DateTime?
+  // "SMP 세금계산서 발행 및 발행 요청 완료" 체크 시각. null이면 미발행.
+  // 청구 상태(SMP확정/확정)와는 별개로 마감(매월 25일 전후) 경고에만 쓴다.
+  invoiceIssuedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

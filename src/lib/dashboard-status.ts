@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { formatAmount } from "@/lib/format"
+import { isRecSettled } from "@/lib/billing-status"
 import { daysSince, isOutstanding } from "@/features/receipts/lib/outstanding"
 
 export type StatusTone = "neutral" | "success" | "warning" | "danger"
@@ -40,7 +40,7 @@ export async function getDashboardStatus(): Promise<Record<string, StatusBadge[]
     clientGroupCount,
     needsReviewCount,
     smpConfirmations,
-    smpSupply,
+    smpMonthRows,
     recRows,
     recDefault,
     receiptConfirmations,
@@ -48,21 +48,22 @@ export async function getDashboardStatus(): Promise<Record<string, StatusBadge[]
     latestInvoice,
     taxInvoiceRows,
   ] = await Promise.all([
-    prisma.plantMaster.findMany({ select: { id: true, clientGroupId: true } }),
+    prisma.plantMaster.findMany({
+      select: { id: true, clientGroupId: true, operatingStatus: true },
+    }),
     prisma.clientGroup.count(),
     prisma.smpMonthly.count({ where: { parseStatus: "NEEDS_REVIEW" } }),
     prisma.smpMonthlyConfirmation.findMany({
       where: { billingYearMonth: month, status: "CONFIRMED" },
-      select: { clientGroupId: true },
+      select: { clientGroupId: true, invoiceIssuedAt: true },
     }),
-    prisma.smpMonthly.aggregate({
+    prisma.smpMonthly.findMany({
       where: { billingYearMonth: month, plantId: { not: null } },
-      _sum: { supplyAmount: true },
-      _count: true,
+      select: { plantId: true },
     }),
     prisma.recMonthly.findMany({
       where: { billingYearMonth: month, status: "CONFIRMED" },
-      select: { plantId: true },
+      select: { plantId: true, status: true, quantity: true, unitPrice: true },
     }),
     prisma.recMonthlyDefault.findUnique({ where: { billingYearMonth: month } }),
     prisma.receiptMonthlyConfirmation.count({
@@ -106,14 +107,36 @@ export async function getDashboardStatus(): Promise<Record<string, StatusBadge[]
     label: `${m} 확정 ${confirmedGroups}/${activeClientGroupIds.size} 거래처`,
     tone: confirmedGroups >= activeClientGroupIds.size ? "success" : "neutral",
   })
+  // 마감 경고는 "SMP 세금계산서 발행 및 발행 요청 완료"가 체크되지 않은 거래처 기준.
+  // 아직 SMP 확정 전인 거래처도 발행 전이므로 미발행으로 센다.
+  const issuedGroupIds = new Set(
+    smpConfirmations.filter((c) => c.invoiceIssuedAt).map((c) => c.clientGroupId),
+  )
+  const unissuedGroups = [...activeClientGroupIds].filter((id) => !issuedGroupIds.has(id)).length
   const daysLeft = INVOICE_DEADLINE_DAY - today.getDate()
-  if (daysLeft >= 0) {
+  if (activeClientGroupIds.size > 0 && unissuedGroups === 0) {
+    smp.push({ label: `${m} 발행 완료`, tone: "success" })
+  } else if (daysLeft >= 0) {
+    const deadline = daysLeft === 0 ? "마감 오늘" : `마감 D-${daysLeft}`
     smp.push({
-      label: daysLeft === 0 ? "세금계산서 마감 오늘" : `세금계산서 마감 D-${daysLeft}`,
+      label: `미발행 ${unissuedGroups}곳 · ${deadline}`,
       tone: daysLeft <= 3 ? "danger" : daysLeft <= 7 ? "warning" : "neutral",
     })
   }
   status["/smp"] = smp
+
+  // REC 수량·단가까지 확정된 발전소(단가 없이 수량만 입력된 행은 제외).
+  const settledRecPlantIds = new Set(
+    recRows
+      .filter((r) =>
+        isRecSettled({
+          status: r.status,
+          quantity: Number(r.quantity),
+          unitPrice: Number(r.unitPrice),
+        }),
+      )
+      .map((r) => r.plantId),
+  )
 
   const rec: StatusBadge[] = []
   const recTargetPlantIds = new Set(
@@ -122,7 +145,7 @@ export async function getDashboardStatus(): Promise<Record<string, StatusBadge[]
   if (recTargetPlantIds.size === 0) {
     rec.push({ label: `${m} SMP 확정 대기`, tone: "neutral" })
   } else {
-    const recDone = recRows.filter((r) => recTargetPlantIds.has(r.plantId)).length
+    const recDone = [...recTargetPlantIds].filter((id) => settledRecPlantIds.has(id)).length
     rec.push({
       label: `${m} 확정 ${recDone}/${recTargetPlantIds.size}곳`,
       tone: recDone >= recTargetPlantIds.size ? "success" : "warning",
@@ -131,10 +154,23 @@ export async function getDashboardStatus(): Promise<Record<string, StatusBadge[]
   }
   status["/rec"] = rec
 
-  status["/reports"] =
-    smpSupply._count > 0
-      ? [{ label: `${m} SMP 공급가액 ${formatAmount(smpSupply._sum.supplyAmount)}원`, tone: "neutral" }]
-      : [{ label: `${m} 데이터 없음`, tone: "neutral" }]
+  // 청구 상태 집계: 폐지 발전소는 그 달 SMP 데이터가 있을 때만 대상에 넣는다.
+  const monthDataPlantIds = new Set(smpMonthRows.map((r) => r.plantId))
+  const reportPlants = plants.filter(
+    (p) => p.operatingStatus !== "CLOSED" || monthDataPlantIds.has(p.id),
+  )
+  if (monthDataPlantIds.size === 0) {
+    status["/reports"] = [{ label: `${m} 데이터 없음`, tone: "neutral" }]
+  } else {
+    const smpConfirmedPlants = reportPlants.filter((p) => confirmedGroupIds.has(p.clientGroupId))
+    const settledPlants = smpConfirmedPlants.filter((p) => settledRecPlantIds.has(p.id)).length
+    status["/reports"] = [
+      {
+        label: `${m} SMP확정 ${smpConfirmedPlants.length - settledPlants} · 확정 ${settledPlants} / 전체 ${reportPlants.length}곳`,
+        tone: settledPlants >= reportPlants.length ? "success" : "neutral",
+      },
+    ]
+  }
 
   // ── 영수증/세금계산서 ─────────────────────────────────────
   // 카테고리는 매출·매입·영수증 3종.

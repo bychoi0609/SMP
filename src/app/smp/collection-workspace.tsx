@@ -6,6 +6,8 @@ import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,6 +43,7 @@ import {
   getSmpCollectionStatusAction,
   getSmpReportRowsAction,
   getSolarIrradianceMonthlyAction,
+  setSmpInvoiceIssuedAction,
   unconfirmSmpCollectionAction,
   type ReportPlant,
   type ReportRow,
@@ -62,6 +65,7 @@ export function CollectionWorkspace({
   const [plants, setPlants] = useState<ReportPlant[]>(initialPlants)
   const [rows, setRows] = useState<Map<number, ReportRow>>(new Map())
   const [status, setStatus] = useState<SmpCollectionStatusValue>("DRAFT")
+  const [invoiceIssued, setInvoiceIssued] = useState(false)
   const [irradianceByRegion, setIrradianceByRegion] = useState<
     Record<string, number | null>
   >({})
@@ -93,7 +97,8 @@ export function CollectionWorkspace({
       setRows(new Map(result.map((r) => [r.plantId, r])))
       setIrradianceByRegion(irradiance)
       setRecDefaultPrice(defaultPrice !== null ? String(defaultPrice) : "")
-      setStatus(collectionStatus)
+      setStatus(collectionStatus.status)
+      setInvoiceIssued(collectionStatus.invoiceIssued)
       setActiveCell(null)
     })
   }, [month, clientGroupId, query])
@@ -211,6 +216,23 @@ export function CollectionWorkspace({
     })
   }
 
+  function handleInvoiceIssuedChange(issued: boolean) {
+    if (!clientGroupId) return
+    startConfirming(async () => {
+      const result = await setSmpInvoiceIssuedAction(clientGroupId, month, issued)
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      setInvoiceIssued(issued)
+      toast.success(
+        issued
+          ? `${month} SMP 세금계산서 발행 완료로 표시했어요.`
+          : "발행 완료 표시를 해제했어요.",
+      )
+    })
+  }
+
   function moveActiveCell(rowDelta: number, colDelta: number) {
     setActiveCell((prev) => {
       if (!prev) return prev
@@ -296,7 +318,7 @@ export function CollectionWorkspace({
         <div className="flex flex-wrap items-center gap-2">
           <MonthSelect value={month} onChange={setMonth} />
           <Badge variant={isConfirmed ? "secondary" : "outline"}>
-            {isConfirmed ? "확정됨" : "작업중"}
+            {!isConfirmed ? "작업중" : invoiceIssued ? "발행완료" : "확정됨"}
           </Badge>
           {isConfirmed ? (
             <Button
@@ -317,6 +339,16 @@ export function CollectionWorkspace({
             >
               <Lock /> {isConfirming ? "처리 중..." : "확정"}
             </Button>
+          )}
+          {isConfirmed && (
+            <Label className="flex items-center gap-2 rounded-lg border border-input px-2.5 py-1.5 text-sm font-normal">
+              <Checkbox
+                checked={invoiceIssued}
+                disabled={isConfirming}
+                onCheckedChange={(checked) => handleInvoiceIssuedChange(checked === true)}
+              />
+              SMP 세금계산서 발행 및 발행 요청 완료
+            </Label>
           )}
           <div className="flex items-center gap-1.5 rounded-lg border border-input px-2 py-1">
             <span className="text-xs whitespace-nowrap text-muted-foreground">

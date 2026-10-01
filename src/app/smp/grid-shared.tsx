@@ -157,6 +157,10 @@ export function getCellConfig(
   row: ReportRow | undefined,
   month: string,
   patchRow: (plantId: number, patch: Partial<ReportRow>) => void,
+  // REC 탭(월말 작업)에서는 단가를 입력하면 표시된 수량(예상치 또는 실제 발급량)과
+  // 함께 그 행을 확정한다. 엑셀에서도 실제 발급량이 예상치와 같으면 수량을 따로
+  // 고치지 않기 때문. SMP 탭에서는 발전량이 아직 바뀔 수 있어 확정하지 않는다.
+  options?: { confirmRecOnPriceSave?: boolean },
 ): CellConfig {
   switch (column) {
     case "generationKwh":
@@ -238,17 +242,20 @@ export function getCellConfig(
         format: formatAmount,
         onSave: async (value) => {
           const quantity = getDisplayRecQuantity(plant, row) ?? 0
+          const confirm = options?.confirmRecOnPriceSave ?? false
           const result = await upsertRecRowAction(
             plant.id,
             month,
             quantity,
             value,
+            { confirmQuantity: confirm },
           )
           if (!result.error) {
             patchRow(plant.id, {
               recQuantity: quantity,
               recUnitPrice: value,
               recAmount: quantity * value,
+              ...(confirm ? { recStatus: "CONFIRMED" as const } : {}),
             })
           }
           return result

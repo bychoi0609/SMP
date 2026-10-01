@@ -490,17 +490,26 @@ export async function getCollectionPlantsAction(
 
 export type SmpCollectionStatusValue = "DRAFT" | "CONFIRMED"
 
+export type SmpCollectionState = {
+  status: SmpCollectionStatusValue
+  // "SMP 세금계산서 발행 및 발행 요청 완료" 체크 여부
+  invoiceIssued: boolean
+}
+
 // 거래처+귀속월 단위 확정 상태 조회. 확정 이력이 아직 없으면 작업중(DRAFT)으로 본다.
 export async function getSmpCollectionStatusAction(
   clientGroupId: number,
   billingYearMonth: string,
-): Promise<SmpCollectionStatusValue> {
+): Promise<SmpCollectionState> {
   const row = await prisma.smpMonthlyConfirmation.findUnique({
     where: {
       clientGroupId_billingYearMonth: { clientGroupId, billingYearMonth },
     },
   })
-  return row?.status ?? "DRAFT"
+  return {
+    status: row?.status ?? "DRAFT",
+    invoiceIssued: row?.invoiceIssuedAt != null,
+  }
 }
 
 // 해당 거래처+귀속월 데이터 수집을 확정한다. 확정되면 이 조합에 속한 발전소의
@@ -534,6 +543,18 @@ export async function unconfirmSmpCollectionAction(
   clientGroupId: number,
   billingYearMonth: string,
 ): Promise<{ error?: string }> {
+  const current = await prisma.smpMonthlyConfirmation.findUnique({
+    where: {
+      clientGroupId_billingYearMonth: { clientGroupId, billingYearMonth },
+    },
+    select: { invoiceIssuedAt: true },
+  })
+  if (current?.invoiceIssuedAt) {
+    return {
+      error: "세금계산서 발행 완료 체크를 먼저 해제해 주세요.",
+    }
+  }
+
   await prisma.smpMonthlyConfirmation.upsert({
     where: {
       clientGroupId_billingYearMonth: { clientGroupId, billingYearMonth },
@@ -543,6 +564,43 @@ export async function unconfirmSmpCollectionAction(
   })
   revalidatePath("/smp")
   revalidatePath("/rec")
+  revalidatePath("/reports")
+  revalidatePath("/")
+  return {}
+}
+
+// "SMP 세금계산서 발행 및 발행 요청 완료" 체크/해제. SMP 데이터가 확정된
+// 거래처·귀속월에만 가능하며, 같은 조합의 SmpMonthly 발행상태(taxInvoiceStatus)도
+// 함께 맞춰 초기화·삭제 보호 로직이 발행된 데이터를 지키도록 한다.
+export async function setSmpInvoiceIssuedAction(
+  clientGroupId: number,
+  billingYearMonth: string,
+  issued: boolean,
+): Promise<{ error?: string }> {
+  const confirmation = await prisma.smpMonthlyConfirmation.findUnique({
+    where: {
+      clientGroupId_billingYearMonth: { clientGroupId, billingYearMonth },
+    },
+    select: { status: true },
+  })
+  if (confirmation?.status !== "CONFIRMED") {
+    return { error: "SMP 데이터를 먼저 확정해 주세요." }
+  }
+
+  await prisma.$transaction([
+    prisma.smpMonthlyConfirmation.update({
+      where: {
+        clientGroupId_billingYearMonth: { clientGroupId, billingYearMonth },
+      },
+      data: { invoiceIssuedAt: issued ? new Date() : null },
+    }),
+    prisma.smpMonthly.updateMany({
+      where: { billingYearMonth, plant: { clientGroupId } },
+      data: { taxInvoiceStatus: issued ? "ISSUED" : "NOT_ISSUED" },
+    }),
+  ])
+
+  revalidatePath("/smp")
   revalidatePath("/reports")
   revalidatePath("/")
   return {}

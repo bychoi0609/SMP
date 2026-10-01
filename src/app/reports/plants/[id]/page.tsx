@@ -14,7 +14,12 @@ import {
 } from "@/components/ui/table"
 import { prisma } from "@/lib/prisma"
 import { formatAmount, formatNumber } from "@/lib/format"
-import { computeBillingStatus } from "@/lib/billing-status"
+import {
+  computeBillingStatus,
+  isRecSettled,
+  smpConfirmationKey,
+} from "@/lib/billing-status"
+import { getConfirmedSmpKeys } from "@/lib/billing-status-server"
 import { daysInMonth } from "@/lib/date"
 
 function badgeVariant(status: string) {
@@ -38,12 +43,13 @@ export default async function PlantReportPage({
   })
   if (!plant) notFound()
 
-  const [smpRows, recRows] = await Promise.all([
+  const [smpRows, recRows, confirmedSmpKeys] = await Promise.all([
     prisma.smpMonthly.findMany({
       where: { plantId, parseStatus: "OK" },
       orderBy: { billingYearMonth: "desc" },
     }),
     prisma.recMonthly.findMany({ where: { plantId } }),
+    getConfirmedSmpKeys({ clientGroupId: plant.clientGroupId }),
   ])
 
   const recByMonth = new Map(recRows.map((r) => [r.billingYearMonth, r]))
@@ -104,8 +110,16 @@ export default async function PlantReportPage({
               const supplyAmount = row.supplyAmount ? Number(row.supplyAmount) : 0
               const recAmount = rec?.amount ? Number(rec.amount) : 0
               const status = computeBillingStatus(
-                row.taxInvoiceStatus === "ISSUED",
-                rec?.status === "CONFIRMED",
+                confirmedSmpKeys.has(
+                  smpConfirmationKey(plant.clientGroupId, row.billingYearMonth),
+                ),
+                isRecSettled(
+                  rec && {
+                    status: rec.status,
+                    quantity: Number(rec.quantity),
+                    unitPrice: Number(rec.unitPrice),
+                  },
+                ),
               )
 
               return (

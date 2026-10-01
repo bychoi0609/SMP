@@ -4,7 +4,9 @@ import { useState, useTransition } from "react"
 import { FileSpreadsheet } from "lucide-react"
 import { toast } from "sonner"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { isRecSettled } from "@/lib/billing-status"
 import { formatAmount, formatNumber } from "@/lib/format"
 import { daysInMonth } from "@/lib/date"
 import { cn } from "@/lib/utils"
@@ -156,7 +158,9 @@ export function RecGrid({
           activeCell?.row === rowIndex && activeCell?.col === colIndex
         }
         readOnly={false}
-        config={getCellConfig(column, plant, row, month, patchRow)}
+        config={getCellConfig(column, plant, row, month, patchRow, {
+          confirmRecOnPriceSave: true,
+        })}
         onActivate={() => setActiveCell({ row: rowIndex, col: colIndex })}
         onMove={moveActiveCell}
         onCancel={() => setActiveCell(null)}
@@ -179,7 +183,7 @@ export function RecGrid({
         </Button>
       </div>
       <div className="max-h-[70vh] overflow-auto rounded-lg border bg-card">
-        <table className="w-full min-w-[1180px] border-separate border-spacing-0">
+        <table className="w-full min-w-[1270px] border-separate border-spacing-0">
           <thead className="sticky top-0 z-10">
             <tr>
               <th className={cn(thCell, "w-12")}>번호</th>
@@ -194,13 +198,14 @@ export function RecGrid({
               <th className={cn(thCell, "w-20")}>REC단가</th>
               <th className={cn(thCell, "w-24")}>REC매출</th>
               <th className={cn(thCell, "w-28")}>매출총액(A)</th>
+              <th className={cn(thCell, "w-24")}>상태</th>
             </tr>
           </thead>
           <tbody>
             {plants.length === 0 && (
               <tr>
                 <td
-                  colSpan={12}
+                  colSpan={13}
                   className="h-24 whitespace-normal text-center text-sm text-muted-foreground"
                 >
                   확정된 데이터가 없습니다.
@@ -262,6 +267,20 @@ export function RecGrid({
                   <td className={cn(tdCell, "font-medium")}>
                     {row ? formatAmount(totalAmount) : "-"}
                   </td>
+                  <td className={tdCell}>
+                    {/* REC 탭에는 SMP 확정된 거래처·월만 나오므로 REC 확정 여부만 보면 된다. */}
+                    {isRecSettled(
+                      row && {
+                        status: row.recStatus,
+                        quantity: row.recQuantity,
+                        unitPrice: row.recUnitPrice,
+                      },
+                    ) ? (
+                      <Badge variant="secondary">확정</Badge>
+                    ) : (
+                      <Badge variant="outline">SMP확정</Badge>
+                    )}
+                  </td>
                 </tr>
               )
             })}
@@ -315,6 +334,7 @@ export function RecGrid({
                 <td className={cn(tdCell, "bg-muted font-semibold")}>
                   {formatAmount(totals.supplyAmount + totals.recAmount)}
                 </td>
+                <td className={cn(tdCell, "bg-muted font-semibold")} />
               </tr>
             </tfoot>
           )}

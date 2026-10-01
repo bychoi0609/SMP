@@ -12,7 +12,13 @@ import { ClientGroupFilterBar } from "@/components/client-group-filter-bar"
 import { prisma } from "@/lib/prisma"
 import type { Prisma } from "@/generated/prisma/client"
 import { formatAmount } from "@/lib/format"
-import { computeBillingStatus, type BillingStatus } from "@/lib/billing-status"
+import {
+  computeBillingStatus,
+  isRecSettled,
+  smpConfirmationKey,
+  type BillingStatus,
+} from "@/lib/billing-status"
+import { getConfirmedSmpKeys } from "@/lib/billing-status-server"
 import { PlantPicker } from "./plant-picker"
 
 type ClientGroupSummary = {
@@ -49,7 +55,7 @@ export default async function ReportsPage({
     ]
   }
 
-  const [smpRows, recRows, plants, clientGroupOptions] = await Promise.all([
+  const [smpRows, recRows, plants, clientGroupOptions, confirmedSmpKeys] = await Promise.all([
     prisma.smpMonthly.findMany({
       where: {
         parseStatus: "OK",
@@ -67,6 +73,7 @@ export default async function ReportsPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    getConfirmedSmpKeys(),
   ])
 
   const recByKey = new Map(
@@ -97,8 +104,14 @@ export default async function ReportsPage({
 
     const rec = recByKey.get(`${row.plantId}-${month}`)
     const status = computeBillingStatus(
-      row.taxInvoiceStatus === "ISSUED",
-      rec?.status === "CONFIRMED",
+      confirmedSmpKeys.has(smpConfirmationKey(cg.id, month)),
+      isRecSettled(
+        rec && {
+          status: rec.status,
+          quantity: Number(rec.quantity),
+          unitPrice: Number(rec.unitPrice),
+        },
+      ),
     )
 
     summary.plantCount += 1

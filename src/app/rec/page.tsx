@@ -130,7 +130,10 @@ export default async function RecPage({
             query={qParam}
             extraParams={{ month: billingYearMonth }}
           />
+          {/* 표는 받은 데이터를 내부 상태로 들고 있으므로, 월·거래처·검색어가 바뀌면
+              새로 마운트해 이전 월 데이터가 남지 않게 한다. */}
           <RecGrid
+            key={`${billingYearMonth}-${clientGroupId ?? "all"}-${query ?? ""}`}
             month={billingYearMonth}
             plants={plants}
             initialRows={reportRows}
