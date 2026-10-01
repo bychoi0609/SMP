@@ -92,8 +92,9 @@ model PlantMaster {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  smpMonthlies SmpMonthly[]
-  recMonthlies RecMonthly[]
+  smpMonthlies        SmpMonthly[]
+  recMonthlies        RecMonthly[]
+  reportLabelMappings ReportLabelMapping[]
 
   @@map("plant_master")
 }
@@ -415,4 +416,30 @@ model ProfitLossManualEntry {
 
   @@index([billingYearMonth])
   @@map("profit_loss_manual_entry")
+}
+
+// 제출 엑셀(키스트론 매출 보고서)에서 발전소를 가리키는 이름 → 앱 발전소 매핑.
+// 같은 발전소도 파일마다 이름이 달라(1번 시트 이름, 2번 블록 이름, 3번 회사명) 종류별로 따로 둔다.
+// label은 공백·줄바꿈을 한 칸으로 줄인 값(normalizeReportLabel).
+enum ReportLabelKind {
+  PLANT_SHEET // 1번 매출 보고서_발전소별: 발전소 시트 이름
+  INTEGRATED_BLOCK // 2번 매출 보고서_통합(확정본): 연도 시트 B열 블록 이름
+  SALES_ROW // 3번 월별 태양광 발전량: 판매금액 기준 시트 C열 회사명
+
+  @@map("report_label_kind")
+}
+
+model ReportLabelMapping {
+  id      Int             @id @default(autoincrement())
+  kind    ReportLabelKind
+  label   String
+  // null이면 "해당 없음": 앱에 없는 항목(예: 리파워링으로 중지된 HYROPE 1차)이라 채우지 않고 건너뛴다.
+  plantId Int?
+  plant   PlantMaster?    @relation(fields: [plantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([kind, label])
+  @@map("report_label_mapping")
 }

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Table2 } from "lucide-react"
+import { FileDown, Table2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { prisma } from "@/lib/prisma"
@@ -222,9 +222,20 @@ export default async function PerformanceReportPage({
             총합을 보여줘요.
           </p>
         </div>
-        <Button variant="outline" size="sm" render={<Link href={`/reports?${linkQuery}`} />}>
-          <Table2 /> 매출 현황
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" render={<Link href={`/reports?${linkQuery}`} />}>
+            <Table2 /> 매출 현황
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            render={
+              <Link href={`/reports/export${clientGroup ? `?client=${clientGroup.id}` : ""}`} />
+            }
+          >
+            <FileDown /> 엑셀 내보내기
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

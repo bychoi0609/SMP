@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { FileBarChart } from "lucide-react"
+import { FileBarChart, FileDown } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
@@ -173,6 +173,13 @@ export default async function ReportsPage({
             }
           >
             <FileBarChart /> 실적 보고서
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            render={<Link href={`/reports/export${clientParam ? `?client=${clientParam}` : ""}`} />}
+          >
+            <FileDown /> 엑셀 내보내기
           </Button>
         </div>
       </div>
