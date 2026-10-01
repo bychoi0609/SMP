@@ -25,6 +25,7 @@ import {
   downloadBlob,
   getCellConfig,
   getDisplayRecAmount,
+  emptyReportRow,
   getDisplayRecQuantity,
   getEffectiveSmpUnitPrice,
   getGenerationHours,
@@ -37,9 +38,7 @@ import {
 import {
   confirmSmpCollectionAction,
   exportSmpReportAction,
-  applyRecUnitPriceToAllAction,
   getCollectionPlantsAction,
-  getRecDefaultPriceAction,
   getSmpCollectionStatusAction,
   getSmpReportRowsAction,
   getSolarIrradianceMonthlyAction,
@@ -75,8 +74,6 @@ export function CollectionWorkspace({
     row: number
     col: number
   } | null>(null)
-  const [recDefaultPrice, setRecDefaultPrice] = useState("")
-  const [isApplyingRecPrice, startApplyRecPrice] = useTransition()
   const [isExporting, startExport] = useTransition()
   const [isConfirming, startConfirming] = useTransition()
 
@@ -85,37 +82,21 @@ export function CollectionWorkspace({
   useEffect(() => {
     if (!clientGroupId) return
     startLoading(async () => {
-      const [collectionPlants, result, irradiance, defaultPrice, collectionStatus] =
+      const [collectionPlants, result, irradiance, collectionStatus] =
         await Promise.all([
           getCollectionPlantsAction(clientGroupId, month, query),
           getSmpReportRowsAction(month),
           getSolarIrradianceMonthlyAction(month),
-          getRecDefaultPriceAction(month),
           getSmpCollectionStatusAction(clientGroupId, month),
         ])
       setPlants(collectionPlants)
       setRows(new Map(result.map((r) => [r.plantId, r])))
       setIrradianceByRegion(irradiance)
-      setRecDefaultPrice(defaultPrice !== null ? String(defaultPrice) : "")
       setStatus(collectionStatus.status)
       setInvoiceIssued(collectionStatus.invoiceIssued)
       setActiveCell(null)
     })
   }, [month, clientGroupId, query])
-
-  function emptyReportRow(plantId: number): ReportRow {
-    return {
-      plantId,
-      generationKwh: null,
-      smpUnitPrice: null,
-      supplyAmount: null,
-      recQuantity: null,
-      recUnitPrice: null,
-      recAmount: null,
-      recStatus: null,
-      capacityKw: null,
-    }
-  }
 
   function patchRow(plantId: number, patch: Partial<ReportRow>) {
     setRows((prev) => {
@@ -123,48 +104,6 @@ export function CollectionWorkspace({
       const current = next.get(plantId) ?? emptyReportRow(plantId)
       next.set(plantId, { ...current, ...patch })
       return next
-    })
-  }
-
-  // "REC단가 일괄적용" 입력창. 입력된 단가를 대표 단가로 저장하고 화면에
-  // 표시된 발전소 전체의 REC단가에 적용한다(수량은 각 행에 이미 표시된
-  // 값 — 확정 수량 또는 발전량 기반 예상치 — 을 그대로 유지한다).
-  function applyRecDefaultPrice() {
-    const trimmed = recDefaultPrice.trim()
-    if (trimmed === "") return
-    const unitPrice = Number(trimmed)
-    if (Number.isNaN(unitPrice)) {
-      toast.error("숫자를 입력해 주세요.")
-      return
-    }
-    const targets = plants.map((plant) => ({
-      plantId: plant.id,
-      quantity: getDisplayRecQuantity(plant, rows.get(plant.id)) ?? 0,
-    }))
-    startApplyRecPrice(async () => {
-      const result = await applyRecUnitPriceToAllAction(
-        month,
-        unitPrice,
-        targets,
-      )
-      if (result.error) {
-        toast.error(result.error)
-        return
-      }
-      setRows((prev) => {
-        const next = new Map(prev)
-        for (const { plantId, quantity } of targets) {
-          const current = next.get(plantId) ?? emptyReportRow(plantId)
-          next.set(plantId, {
-            ...current,
-            recQuantity: quantity,
-            recUnitPrice: unitPrice,
-            recAmount: quantity * unitPrice,
-          })
-        }
-        return next
-      })
-      toast.success("전체 발전소에 REC단가를 적용했습니다.")
     })
   }
 
@@ -350,35 +289,6 @@ export function CollectionWorkspace({
               SMP 세금계산서 발행 및 발행 요청 완료
             </Label>
           )}
-          <div className="flex items-center gap-1.5 rounded-lg border border-input px-2 py-1">
-            <span className="text-xs whitespace-nowrap text-muted-foreground">
-              REC단가 일괄적용
-            </span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={recDefaultPrice}
-              disabled={isConfirmed}
-              onChange={(e) => setRecDefaultPrice(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault()
-                  applyRecDefaultPrice()
-                }
-              }}
-              placeholder="원/REC"
-              className="w-20 rounded border border-input bg-background px-1.5 py-0.5 text-sm text-right outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
-            />
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={isApplyingRecPrice || isConfirmed}
-              onClick={applyRecDefaultPrice}
-            >
-              {isApplyingRecPrice ? "적용 중..." : "전체 적용"}
-            </Button>
-          </div>
           {isLoading && (
             <span className="text-xs text-muted-foreground">
               데이터를 불러오는 중...

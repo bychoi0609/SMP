@@ -4,7 +4,6 @@ import { useState, useTransition } from "react"
 import { FileSpreadsheet } from "lucide-react"
 import { toast } from "sonner"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { isRecSettled } from "@/lib/billing-status"
 import { formatAmount, formatNumber } from "@/lib/format"
@@ -14,6 +13,7 @@ import {
   GridCell,
   base64ToBlob,
   downloadBlob,
+  emptyReportRow,
   getCellConfig,
   getDisplayRecAmount,
   getDisplayRecQuantity,
@@ -29,36 +29,30 @@ import {
   type ReportPlant,
   type ReportRow,
 } from "../smp/actions"
+import type { RecRowPatch } from "./actions"
+import {
+  RecMonthToolbar,
+  RecRowStatusMenu,
+  type RecMonthSummary,
+} from "./rec-month-controls"
 
 // REC 탭에서는 확정된 SMP 데이터(발전량/SMP단가/SMP매출)는 읽기 전용으로만
 // 보여주고, REC수량·REC단가만 발전소별로 개별 수정할 수 있다.
 const EDITABLE_COLUMNS = ["recQuantity", "recUnitPrice"] as const
 type EditableColumn = (typeof EDITABLE_COLUMNS)[number]
 
-function emptyReportRow(plantId: number): ReportRow {
-  return {
-    plantId,
-    generationKwh: null,
-    smpUnitPrice: null,
-    supplyAmount: null,
-    recQuantity: null,
-    recUnitPrice: null,
-    recAmount: null,
-    recStatus: null,
-    capacityKw: null,
-  }
-}
-
 export function RecGrid({
   month,
   plants,
   initialRows,
   irradianceByRegion,
+  initialDefaultPrice,
 }: {
   month: string
   plants: ReportPlant[]
   initialRows: ReportRow[]
   irradianceByRegion: Record<string, number | null>
+  initialDefaultPrice: number | null
 }) {
   const [rows, setRows] = useState<Map<number, ReportRow>>(
     () => new Map(initialRows.map((r) => [r.plantId, r])),
@@ -77,6 +71,41 @@ export function RecGrid({
       return next
     })
   }
+
+  function applyPatches(patches: RecRowPatch[]) {
+    setRows((prev) => {
+      const next = new Map(prev)
+      for (const { plantId, ...patch } of patches) {
+        const current = next.get(plantId) ?? emptyReportRow(plantId)
+        next.set(plantId, { ...current, ...patch })
+      }
+      return next
+    })
+  }
+
+  function isRowSettled(row: ReportRow | undefined) {
+    return isRecSettled(
+      row && {
+        status: row.recStatus,
+        quantity: row.recQuantity,
+        unitPrice: row.recUnitPrice,
+      },
+    )
+  }
+
+  const summary: RecMonthSummary = plants.reduce(
+    (acc, plant) => {
+      const row = rows.get(plant.id)
+      if (isRowSettled(row)) acc.settled += 1
+      const quantity = getDisplayRecQuantity(plant, row) ?? 0
+      // 서버 확정 규칙(setRecConfirmedAction)과 같게: 데이터가 아예 없는 행도 건너뛴다.
+      const noData = row?.recStatus == null && row?.generationKwh == null
+      if (noData || (quantity !== 0 && !((row?.recUnitPrice ?? 0) > 0))) acc.missingPrice += 1
+      if (row?.recQuantityIsActual) acc.actual += 1
+      return acc
+    },
+    { total: plants.length, settled: 0, missingPrice: 0, actual: 0 },
+  )
 
   function moveActiveCell(rowDelta: number, colDelta: number) {
     setActiveCell((prev) => {
@@ -160,6 +189,7 @@ export function RecGrid({
         readOnly={false}
         config={getCellConfig(column, plant, row, month, patchRow, {
           confirmRecOnPriceSave: true,
+          showRecTags: true,
         })}
         onActivate={() => setActiveCell({ row: rowIndex, col: colIndex })}
         onMove={moveActiveCell}
@@ -170,6 +200,13 @@ export function RecGrid({
 
   return (
     <div className="flex flex-col gap-3">
+      <RecMonthToolbar
+        month={month}
+        plantIds={plants.map((p) => p.id)}
+        initialDefaultPrice={initialDefaultPrice}
+        summary={summary}
+        onPatches={applyPatches}
+      />
       <div className="flex justify-end">
         <Button
           type="button"
@@ -269,17 +306,15 @@ export function RecGrid({
                   </td>
                   <td className={tdCell}>
                     {/* REC 탭에는 SMP 확정된 거래처·월만 나오므로 REC 확정 여부만 보면 된다. */}
-                    {isRecSettled(
-                      row && {
-                        status: row.recStatus,
-                        quantity: row.recQuantity,
-                        unitPrice: row.recUnitPrice,
-                      },
-                    ) ? (
-                      <Badge variant="secondary">확정</Badge>
-                    ) : (
-                      <Badge variant="outline">SMP확정</Badge>
-                    )}
+                    <RecRowStatusMenu
+                      month={month}
+                      plantId={plant.id}
+                      settled={isRowSettled(row)}
+                      hasRow={row?.recStatus != null}
+                      quantityIsActual={row?.recQuantityIsActual ?? false}
+                      unitPriceIsManual={row?.recUnitPriceIsManual ?? false}
+                      onPatches={applyPatches}
+                    />
                   </td>
                 </tr>
               )

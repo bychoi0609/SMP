@@ -10,6 +10,7 @@ import {
   getSolarIrradianceMonthlyAction,
   type ReportPlant,
 } from "../smp/actions"
+import { getRecDefaultPriceAction } from "./actions"
 import { MonthPicker } from "./month-picker"
 import { RecGrid } from "./rec-grid"
 
@@ -48,6 +49,7 @@ export default async function RecPage({
   let plants: ReportPlant[] = []
   let reportRows: Awaited<ReturnType<typeof getSmpReportRowsAction>> = []
   let irradianceByRegion: Record<string, number | null> = {}
+  let defaultPrice: number | null = null
 
   if (billingYearMonth) {
     const confirmations = await prisma.smpMonthlyConfirmation.findMany({
@@ -60,7 +62,7 @@ export default async function RecPage({
     })
     const confirmedClientGroupIds = confirmations.map((c) => c.clientGroupId)
 
-    const [plantRows, rows, irradiance] = await Promise.all([
+    const [plantRows, rows, irradiance, recDefaultPrice] = await Promise.all([
       confirmedClientGroupIds.length > 0
         ? prisma.plantMaster.findMany({
             where: {
@@ -85,10 +87,12 @@ export default async function RecPage({
         : Promise.resolve([]),
       getSmpReportRowsAction(billingYearMonth),
       getSolarIrradianceMonthlyAction(billingYearMonth),
+      getRecDefaultPriceAction(billingYearMonth),
     ])
     plants = plantRows.map(toReportPlant)
     reportRows = rows
     irradianceByRegion = irradiance
+    defaultPrice = recDefaultPrice
   }
 
   return (
@@ -97,9 +101,9 @@ export default async function RecPage({
         <div>
           <h1 className="text-xl font-semibold">REC 데이터</h1>
           <p className="text-sm text-muted-foreground">
-            &quot;SMP 데이터 수집&quot;에서 확정된 월별 데이터가 이곳에
-            자동으로 반영됩니다. REC수량·단가는 발전소별로 개별 수정할 수
-            있습니다.
+            SMP 확정된 달의 REC 월말 작업 화면이에요. 대표단가를 적용하고,
+            실제 발급량과 개별 단가를 고친 뒤 확정해 주세요. 직접 입력한
+            단가(개별)는 대표단가로 덮어쓰지 않아요.
           </p>
         </div>
         {months.length > 0 && billingYearMonth && (
@@ -138,6 +142,7 @@ export default async function RecPage({
             plants={plants}
             initialRows={reportRows}
             irradianceByRegion={irradianceByRegion}
+            initialDefaultPrice={defaultPrice}
           />
         </div>
       )}

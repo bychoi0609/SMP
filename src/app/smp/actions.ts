@@ -8,7 +8,6 @@ import type { Prisma } from "@/generated/prisma/client"
 import { scanKepcoNotices, type ScanResult } from "@/lib/kepco-mail"
 import { plantFormSchema } from "@/lib/validations/plant"
 import { smpReportCellSchema } from "@/lib/validations/smp"
-import { representativePriceFormSchema } from "@/lib/validations/rec"
 import { IRRADIANCE_REGIONS, isIrradianceRegion } from "@/lib/irradiance-regions"
 import { visiblePlantWhere, type PlantOperatingStatusValue } from "@/lib/plant-status"
 import { REPORT_PLANT_SELECT, toReportPlant } from "@/lib/report-plant"
@@ -196,6 +195,9 @@ export type ReportRow = {
   recUnitPrice: number | null
   recAmount: number | null
   recStatus: "TENTATIVE" | "CONFIRMED" | null
+  // 실제 발급량을 입력했는지(false면 예상치), 개별 단가인지(false면 대표단가)
+  recQuantityIsActual: boolean
+  recUnitPriceIsManual: boolean
   // 이 달 계산에 쓰는 설비용량 스냅샷. 없으면 발전소 현재 용량을 쓴다(getRowCapacity).
   capacityKw: number | null
 }
@@ -273,6 +275,8 @@ export async function getSmpReportRowsAction(
       recUnitPrice: rec ? Number(rec.unitPrice) : null,
       recAmount: rec ? Number(rec.amount) : null,
       recStatus: rec ? rec.status : null,
+      recQuantityIsActual: rec?.quantityIsActual ?? false,
+      recUnitPriceIsManual: rec?.unitPriceIsManual ?? false,
       capacityKw: row.capacityKw ? Number(row.capacityKw) : null,
     }
   })
@@ -356,63 +360,6 @@ export async function upsertSolarIrradianceMonthlyAction(
 
   revalidatePath("/smp")
   revalidatePath("/reports")
-  return {}
-}
-
-// 보고서 모달의 "REC단가 일괄적용" 입력창에 표시할 해당 월 대표(기준) 단가.
-// /rec 화면과 동일한 RecMonthlyDefault를 공유한다.
-export async function getRecDefaultPriceAction(
-  billingYearMonth: string,
-): Promise<number | null> {
-  const row = await prisma.recMonthlyDefault.findUnique({
-    where: { billingYearMonth },
-  })
-  return row ? Number(row.baseUnitPrice) : null
-}
-
-// 보고서 모달에서 REC단가를 한 번에 입력해 화면에 표시된 발전소 전체에
-// 적용한다. 대표 단가는 /rec 화면과 공유하는 RecMonthlyDefault에 저장하고,
-// 각 발전소의 REC단가는 갱신하되 수량은 (실제 입력값이 있으면 그 값을,
-// 없으면 SMP 발전량 기반 예상치를) 그대로 유지해 덮어쓰지 않는다. 이후
-// 발전소별 수기 수정은 이 값을 다시 덮어쓸 수 있다.
-export async function applyRecUnitPriceToAllAction(
-  billingYearMonth: string,
-  rawUnitPrice: number,
-  quantities: { plantId: number; quantity: number }[],
-): Promise<{ error?: string }> {
-  const parsed = representativePriceFormSchema.safeParse({
-    baseUnitPrice: rawUnitPrice,
-  })
-  if (!parsed.success) {
-    return { error: "숫자를 입력해 주세요." }
-  }
-  const unitPrice = parsed.data.baseUnitPrice
-
-  await prisma.$transaction([
-    prisma.recMonthlyDefault.upsert({
-      where: { billingYearMonth },
-      update: { baseUnitPrice: unitPrice },
-      create: { billingYearMonth, baseUnitPrice: unitPrice },
-    }),
-    ...quantities.map(({ plantId, quantity }) =>
-      prisma.recMonthly.upsert({
-        where: { plantId_billingYearMonth: { plantId, billingYearMonth } },
-        update: { unitPrice, amount: quantity * unitPrice },
-        create: {
-          plantId,
-          billingYearMonth,
-          quantity,
-          unitPrice,
-          amount: quantity * unitPrice,
-        },
-      }),
-    ),
-  ])
-
-  revalidatePath("/smp")
-  revalidatePath("/rec")
-  revalidatePath("/reports")
-  revalidatePath("/")
   return {}
 }
 

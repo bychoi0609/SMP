@@ -189,6 +189,12 @@ model RecMonthly {
   unitPrice Decimal // 단가 (기본값=대표단가 상속, 수정 가능)
   amount    Decimal // 자동계산: 수량 * 단가
 
+  // 실제 발급량(에너지공단)을 입력했는지. false면 수량은 발전량 기반 예상치로 계속 갱신된다.
+  quantityIsActual  Boolean @default(false)
+  // 발전소별 개별 단가(장기고정 등)인지. true면 대표단가 적용 대상에서 제외된다.
+  unitPriceIsManual Boolean @default(false)
+
+  // 행 확정 여부(TENTATIVE/CONFIRMED). 수량·단가 출처와는 별개다.
   status RecStatus @default(TENTATIVE)
 
   createdAt DateTime @default(now())

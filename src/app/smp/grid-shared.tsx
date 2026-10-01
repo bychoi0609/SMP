@@ -35,21 +35,40 @@ export type CellConfig = {
   step: string
   format: (value: number | null) => string
   onSave: (value: number) => Promise<{ error?: string }>
+  // 값 옆에 붙는 작은 표시(예: "예상", "개별")와, 값을 흐리게 보여줄지 여부
+  tag?: string
+  muted?: boolean
 }
 
-// REC수량이 아직 확정되지 않았을 때(발전량만 존재) 보여줄 예상치를 구한다.
-// 사용자가 REC수량을 직접 입력해 CONFIRMED(확정) 상태가 된 값만 그대로
-// 우선한다. TENTATIVE(잠정) 상태는 "REC단가 일괄적용" 등으로 자동 채워진
-// 값일 뿐이므로, 배율/발전량이 바뀌면 계속 최신 예상치로 다시 계산한다.
+export function emptyReportRow(plantId: number): ReportRow {
+  return {
+    plantId,
+    generationKwh: null,
+    smpUnitPrice: null,
+    supplyAmount: null,
+    recQuantity: null,
+    recUnitPrice: null,
+    recAmount: null,
+    recStatus: null,
+    recQuantityIsActual: false,
+    recUnitPriceIsManual: false,
+    capacityKw: null,
+  }
+}
+
+// 화면에 보여줄 REC수량. 실제 발급량을 입력했거나(recQuantityIsActual) 행이
+// 확정됐으면 저장된 수량을 그대로 쓴다. 그 외에는 대표단가 적용 등으로 자동
+// 채워진 값일 뿐이므로, 가중치/발전량이 바뀌면 계속 최신 예상치로 다시 계산한다.
+// (서버의 loadRecTargets도 같은 규칙을 따른다.)
+export function isRecQuantityFixed(row: ReportRow | undefined): boolean {
+  return !!row && (row.recQuantityIsActual || row.recStatus === "CONFIRMED")
+}
+
 export function getDisplayRecQuantity(
   plant: ReportPlant,
   row: ReportRow | undefined,
 ): number | null {
-  if (
-    row?.recStatus === "CONFIRMED" &&
-    row.recQuantity !== null &&
-    row.recQuantity !== undefined
-  ) {
+  if (row && isRecQuantityFixed(row) && row.recQuantity !== null) {
     return row.recQuantity
   }
   if (row?.generationKwh === null || row?.generationKwh === undefined) {
@@ -160,7 +179,8 @@ export function getCellConfig(
   // REC 탭(월말 작업)에서는 단가를 입력하면 표시된 수량(예상치 또는 실제 발급량)과
   // 함께 그 행을 확정한다. 엑셀에서도 실제 발급량이 예상치와 같으면 수량을 따로
   // 고치지 않기 때문. SMP 탭에서는 발전량이 아직 바뀔 수 있어 확정하지 않는다.
-  options?: { confirmRecOnPriceSave?: boolean },
+  // showRecTags: REC 수량·단가 옆에 "예상"/"개별" 표시를 붙인다(REC 탭).
+  options?: { confirmRecOnPriceSave?: boolean; showRecTags?: boolean },
 ): CellConfig {
   switch (column) {
     case "generationKwh":
@@ -216,6 +236,11 @@ export function getCellConfig(
         value: getDisplayRecQuantity(plant, row),
         step: "1",
         format: formatAmount,
+        ...(options?.showRecTags &&
+        !isRecQuantityFixed(row) &&
+        getDisplayRecQuantity(plant, row) !== null
+          ? { tag: "예상", muted: true }
+          : {}),
         onSave: async (value) => {
           const unitPrice = row?.recUnitPrice ?? 0
           const result = await upsertRecRowAction(
@@ -223,13 +248,13 @@ export function getCellConfig(
             month,
             value,
             unitPrice,
-            { confirmQuantity: true },
+            { markQuantityActual: true },
           )
           if (!result.error) {
             patchRow(plant.id, {
               recQuantity: value,
               recAmount: value * unitPrice,
-              recStatus: "CONFIRMED",
+              recQuantityIsActual: true,
             })
           }
           return result
@@ -240,6 +265,7 @@ export function getCellConfig(
         value: row?.recUnitPrice ?? null,
         step: "0.01",
         format: formatAmount,
+        ...(options?.showRecTags && row?.recUnitPriceIsManual ? { tag: "개별" } : {}),
         onSave: async (value) => {
           const quantity = getDisplayRecQuantity(plant, row) ?? 0
           const confirm = options?.confirmRecOnPriceSave ?? false
@@ -248,13 +274,14 @@ export function getCellConfig(
             month,
             quantity,
             value,
-            { confirmQuantity: confirm },
+            { markPriceManual: true, confirm },
           )
           if (!result.error) {
             patchRow(plant.id, {
               recQuantity: quantity,
               recUnitPrice: value,
               recAmount: quantity * value,
+              recUnitPriceIsManual: true,
               ...(confirm ? { recStatus: "CONFIRMED" as const } : {}),
             })
           }
@@ -316,8 +343,14 @@ export function GridCell({
           "block w-full rounded px-1",
           align === "center" ? "text-center" : "text-right",
           !readOnly && "hover:bg-accent/60",
+          config.muted && "text-muted-foreground",
         )}
       >
+        {config.tag && (
+          <span className="mr-1 rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground">
+            {config.tag}
+          </span>
+        )}
         {config.format(config.value)}
       </button>
     )
