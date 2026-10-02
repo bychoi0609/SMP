@@ -99,6 +99,7 @@ export default async function SmpPage({
         />
         <CollectWorkspacePanel
           clientGroupId={clientGroupId}
+          clientGroupName={clientGroups.find((cg) => cg.id === clientGroupId)?.name}
           query={query}
           initialHasData={needsReview.length + totalSmpCount > 0}
           initialPlants={initialPlantRows}

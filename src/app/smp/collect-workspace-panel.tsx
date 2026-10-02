@@ -11,11 +11,13 @@ import { CollectionWorkspace } from "./collection-workspace"
 // 않는다. refreshKey를 올려 그리드를 다시 마운트시켜 최신 데이터로 갱신한다.
 export function CollectWorkspacePanel({
   clientGroupId,
+  clientGroupName,
   query,
   initialHasData,
   initialPlants,
 }: {
   clientGroupId?: number
+  clientGroupName?: string
   query?: string
   initialHasData: boolean
   initialPlants: ReportPlant[]
@@ -28,6 +30,7 @@ export function CollectWorkspacePanel({
         <SmpToolbar
           initialHasData={initialHasData}
           clientGroupId={clientGroupId}
+          clientGroupName={clientGroupName}
           onDataChanged={() => setRefreshKey((k) => k + 1)}
         />
       </div>

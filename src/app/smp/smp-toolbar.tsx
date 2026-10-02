@@ -10,10 +10,12 @@ import { ScanMailButton } from "./scan-mail-button"
 export function SmpToolbar({
   initialHasData,
   clientGroupId,
+  clientGroupName,
   onDataChanged,
 }: {
   initialHasData: boolean
   clientGroupId?: number
+  clientGroupName?: string
   // 메일 스캔/초기화처럼 이 툴바 바깥의 화면(수집 그리드 등)이 보여주는
   // 데이터를 바꾸는 동작이 끝났을 때 호출된다 — 그 화면이 직접 fetch해서
   // 들고 있는 상태는 이 툴바의 상태 변화만으로는 다시 불러와지지 않기 때문.
@@ -36,11 +38,9 @@ export function SmpToolbar({
       <ActionsMenu
         disabled={!hasData}
         clientGroupId={clientGroupId}
+        clientGroupName={clientGroupName}
         targetMonth={targetMonth}
-        onReset={() => {
-          setHasData(false)
-          onDataChanged?.()
-        }}
+        onReset={() => onDataChanged?.()}
       />
     </div>
   )

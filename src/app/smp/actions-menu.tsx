@@ -19,11 +19,13 @@ import { ResetDataDialog } from "./reset-data-dialog"
 export function ActionsMenu({
   disabled,
   clientGroupId,
+  clientGroupName,
   targetMonth,
   onReset,
 }: {
   disabled?: boolean
   clientGroupId?: number
+  clientGroupName?: string
   targetMonth: string
   onReset?: () => void
 }) {
@@ -88,6 +90,9 @@ export function ActionsMenu({
       <ResetDataDialog
         open={resetOpen}
         onOpenChange={setResetOpen}
+        targetMonth={targetMonth}
+        clientGroupId={clientGroupId}
+        clientGroupName={clientGroupName}
         onReset={onReset}
       />
     </>

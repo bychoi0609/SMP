@@ -399,15 +399,29 @@ export async function generateInvoiceAction(
   }
 }
 
-// 수집된 SMP 데이터 전체 초기화. 이미 "발행완료" 처리된 데이터는 세금계산서
-// 이력이 사라지면 안 되므로 대상에서 제외한다.
-export async function resetSmpDataAction(): Promise<{ deleted: number }> {
-  const { count } = await prisma.smpMonthly.deleteMany({
-    where: { taxInvoiceStatus: { not: "ISSUED" } },
-  })
+// 고른 귀속월의 SMP 데이터만 지운다. 거래처를 고르면 그 거래처 발전소의 행만 지우고
+// (발전소 미지정 검토필요 건은 남김), 고르지 않으면 그 달 전체를 지운다.
+// 발행완료 행은 세금계산서 이력 보호를 위해 남기고 그 개수를 돌려준다
+// (지우려면 먼저 발행완료 체크를 풀어야 함).
+export async function resetSmpDataAction(
+  billingYearMonth: string,
+  clientGroupId?: number,
+): Promise<{ deleted: number; keptIssued: number }> {
+  const where: Prisma.SmpMonthlyWhereInput = {
+    billingYearMonth,
+    ...(clientGroupId ? { plant: { clientGroupId } } : {}),
+  }
+  const [{ count }, keptIssued] = await prisma.$transaction([
+    prisma.smpMonthly.deleteMany({
+      where: { ...where, taxInvoiceStatus: { not: "ISSUED" } },
+    }),
+    prisma.smpMonthly.count({
+      where: { ...where, taxInvoiceStatus: "ISSUED" },
+    }),
+  ])
   revalidatePath("/smp")
   revalidatePath("/")
-  return { deleted: count }
+  return { deleted: count, keptIssued }
 }
 
 // "SMP 데이터 수집" 화면에서 특정 거래처를 선택했을 때 보여줄 발전소 목록.
