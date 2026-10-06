@@ -4,6 +4,9 @@ import { useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import './receipts.css'
 import { Table } from './components/Table'
+import { ReceiptSummary } from './components/ReceiptSummary'
+import type { ReceiptSummaryDimension } from './components/ReceiptSummary'
+import { groupReceiptTotals, summarizeTotals } from './lib/summarizeReceipts'
 import type { Column } from './components/Table'
 import { createReceiptColumns } from './components/receiptColumns'
 import { groupReceiptsByCard } from './lib/parseReceipt'
@@ -91,6 +94,42 @@ export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsV
     return merged
   }, [])
 
+  const totals = useMemo(() => summarizeTotals(filteredRows), [filteredRows])
+
+  // 집계 카드의 항목을 누르면 해당 값으로 검색 조건을 채워 바로 조회한다(기간은 현재 적용된 값 유지).
+  // 이미 그 조건으로 걸러진 항목을 다시 누르면 검색어를 비워 필터를 해제한다.
+  function selectSummaryItem(nextCategory: Exclude<SearchCategory, 'all'>, key: string) {
+    const isActive = appliedSearch.category === nextCategory && appliedSearch.text === key
+    const nextText = isActive ? '' : key
+    const nextSearchCategory: SearchCategory = isActive ? 'all' : nextCategory
+    setCategory(nextSearchCategory)
+    setSearchText(nextText)
+    setAppliedSearch({ category: nextSearchCategory, text: nextText })
+  }
+
+  const activeKey = (c: SearchCategory) =>
+    appliedSearch.category === c && appliedSearch.text ? appliedSearch.text : null
+  const summaryDimensions: ReceiptSummaryDimension[] = [
+    {
+      title: '카드별',
+      groups: groupReceiptTotals(filteredRows, (r) => r.last4, (r) => r.cardLabel),
+      activeKey: activeKey('last4'),
+      onSelect: (key) => selectSummaryItem('last4', key),
+    },
+    {
+      title: '계정과목별',
+      groups: groupReceiptTotals(filteredRows, (r) => r.accountCode),
+      activeKey: activeKey('accountCode'),
+      onSelect: (key) => selectSummaryItem('accountCode', key),
+    },
+    {
+      title: '세부내역별',
+      groups: groupReceiptTotals(filteredRows, (r) => r.detail),
+      activeKey: activeKey('detail'),
+      onSelect: (key) => selectSummaryItem('detail', key),
+    },
+  ]
+
   function handleSearch() {
     setAppliedRange({ start: startMonth, end: endMonth })
     setAppliedSearch({ category, text: searchText })
@@ -173,6 +212,10 @@ export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsV
           </Button>
         </div>
       </div>
+
+      {hasSearched && filteredRows.length > 0 && (
+        <ReceiptSummary totals={totals} dimensions={summaryDimensions} />
+      )}
 
       <Table
         columns={columns}
