@@ -4,9 +4,10 @@ import { useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import './receipts.css'
 import { Table } from './components/Table'
-import { ReceiptSummary } from './components/ReceiptSummary'
-import type { ReceiptSummaryDimension } from './components/ReceiptSummary'
-import { groupReceiptTotals, summarizeTotals } from './lib/summarizeReceipts'
+import { SummaryPanel } from './components/SummaryPanel'
+import type { SummaryDimension, SummaryStat } from './components/SummaryPanel'
+import { groupTotals, summarizeReceiptTotals } from './lib/summarize'
+import { formatNumber } from './lib/format'
 import type { Column } from './components/Table'
 import { createReceiptColumns } from './components/receiptColumns'
 import { groupReceiptsByCard } from './lib/parseReceipt'
@@ -94,7 +95,7 @@ export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsV
     return merged
   }, [])
 
-  const totals = useMemo(() => summarizeTotals(filteredRows), [filteredRows])
+  const totals = useMemo(() => summarizeReceiptTotals(filteredRows), [filteredRows])
 
   // 집계 카드의 항목을 누르면 해당 값으로 검색 조건을 채워 바로 조회한다(기간은 현재 적용된 값 유지).
   // 이미 그 조건으로 걸러진 항목을 다시 누르면 검색어를 비워 필터를 해제한다.
@@ -107,24 +108,34 @@ export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsV
     setAppliedSearch({ category: nextSearchCategory, text: nextText })
   }
 
+  const summaryStats: SummaryStat[] = [
+    { label: '총 사용액', value: `${formatNumber(totals.total)}원` },
+    { label: '건수', value: `${formatNumber(totals.count)}건` },
+    { label: '공급가액', value: formatNumber(totals.supply) },
+    { label: '부가세', value: formatNumber(totals.tax) },
+    ...(totals.unclassified > 0
+      ? [{ label: '미분류(계정과목·세부내역 빈 행)', value: `${totals.unclassified}건`, tone: 'warning' as const }]
+      : []),
+  ]
+
   const activeKey = (c: SearchCategory) =>
     appliedSearch.category === c && appliedSearch.text ? appliedSearch.text : null
-  const summaryDimensions: ReceiptSummaryDimension[] = [
+  const summaryDimensions: SummaryDimension[] = [
     {
       title: '카드별',
-      groups: groupReceiptTotals(filteredRows, (r) => r.last4, (r) => r.cardLabel),
+      groups: groupTotals(filteredRows, (r) => r.last4, (r) => r.cardLabel),
       activeKey: activeKey('last4'),
       onSelect: (key) => selectSummaryItem('last4', key),
     },
     {
       title: '계정과목별',
-      groups: groupReceiptTotals(filteredRows, (r) => r.accountCode),
+      groups: groupTotals(filteredRows, (r) => r.accountCode),
       activeKey: activeKey('accountCode'),
       onSelect: (key) => selectSummaryItem('accountCode', key),
     },
     {
       title: '세부내역별',
-      groups: groupReceiptTotals(filteredRows, (r) => r.detail),
+      groups: groupTotals(filteredRows, (r) => r.detail),
       activeKey: activeKey('detail'),
       onSelect: (key) => selectSummaryItem('detail', key),
     },
@@ -214,7 +225,7 @@ export default function MonthlyReceiptsView({ initialEntries }: MonthlyReceiptsV
       </div>
 
       {hasSearched && filteredRows.length > 0 && (
-        <ReceiptSummary totals={totals} dimensions={summaryDimensions} />
+        <SummaryPanel stats={summaryStats} grandTotal={totals.total} dimensions={summaryDimensions} />
       )}
 
       <Table

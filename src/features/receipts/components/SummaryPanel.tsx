@@ -3,11 +3,17 @@
 import { useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { formatNumber } from '../lib/format'
-import type { ReceiptGroupSummary, ReceiptTotals } from '../lib/summarizeReceipts'
+import type { GroupSummary } from '../lib/summarize'
 
 const COLLAPSED_LIMIT = 5
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: 'warning' }) {
+export interface SummaryStat {
+  label: string
+  value: string
+  tone?: 'warning'
+}
+
+function Stat({ label, value, tone }: SummaryStat) {
   return (
     <div className="flex flex-col gap-0.5 px-4 first:pl-0">
       <span className="text-xs text-muted-foreground">{label}</span>
@@ -23,7 +29,7 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: 'wa
 
 interface GroupCardProps {
   title: string
-  groups: ReceiptGroupSummary[]
+  groups: GroupSummary[]
   grandTotal: number
   activeKey: string | null
   onSelect: (key: string) => void
@@ -89,34 +95,34 @@ function GroupCard({ title, groups, grandTotal, activeKey, onSelect }: GroupCard
   )
 }
 
-export interface ReceiptSummaryDimension {
+export interface SummaryDimension {
   title: string
-  groups: ReceiptGroupSummary[]
+  groups: GroupSummary[]
   activeKey: string | null
   onSelect: (key: string) => void
 }
 
-interface ReceiptSummaryProps {
-  totals: ReceiptTotals
-  dimensions: ReceiptSummaryDimension[]
+interface SummaryPanelProps {
+  stats: SummaryStat[]
+  // 집계 카드 비율 막대의 분모(조회 결과 전체 합계금액).
+  grandTotal: number
+  dimensions: SummaryDimension[]
 }
 
-// 월별 영수증 데이터 조회 결과 요약 — 합계 숫자 한 줄 + 항목별(카드/계정과목/세부내역) 합계금액 카드.
-export function ReceiptSummary({ totals, dimensions }: ReceiptSummaryProps) {
+const GRID_COLS: Record<number, string> = { 1: 'md:grid-cols-1', 2: 'md:grid-cols-2', 3: 'md:grid-cols-3' }
+
+// 월별 영수증/세금계산서 조회 결과 요약 — 합계 숫자 한 줄 + 항목별 합계금액 카드.
+export function SummaryPanel({ stats, grandTotal, dimensions }: SummaryPanelProps) {
   return (
     <div className="mt-3 flex flex-col gap-3">
       <div className="flex flex-wrap divide-x rounded-lg border bg-card p-3">
-        <Stat label="총 사용액" value={`${formatNumber(totals.total)}원`} />
-        <Stat label="건수" value={`${formatNumber(totals.count)}건`} />
-        <Stat label="공급가액" value={formatNumber(totals.supply)} />
-        <Stat label="부가세" value={formatNumber(totals.tax)} />
-        {totals.unclassified > 0 && (
-          <Stat label="미분류(계정과목·세부내역 빈 행)" value={`${totals.unclassified}건`} tone="warning" />
-        )}
+        {stats.map((s) => (
+          <Stat key={s.label} {...s} />
+        ))}
       </div>
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className={`grid gap-3 ${GRID_COLS[dimensions.length] ?? 'md:grid-cols-3'}`}>
         {dimensions.map((d) => (
-          <GroupCard key={d.title} grandTotal={totals.total} {...d} />
+          <GroupCard key={d.title} grandTotal={grandTotal} {...d} />
         ))}
       </div>
     </div>

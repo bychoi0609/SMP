@@ -7,6 +7,10 @@ import { Table } from './components/Table'
 import { createTaxInvoiceColumns } from './components/taxInvoiceColumns'
 import { downloadPurchaseWorkbook, downloadSalesWorkbook } from './lib/exportWorkbook'
 import { taxInvoiceFooterCells } from './lib/footerCells'
+import { SummaryPanel } from './components/SummaryPanel'
+import type { SummaryDimension, SummaryStat } from './components/SummaryPanel'
+import { groupTotals, summarizeTaxInvoiceTotals } from './lib/summarize'
+import { formatNumber } from './lib/format'
 import type { TaxInvoiceRowDTO } from '@/app/receipts/actions'
 import { Button } from './components/ui/button'
 
@@ -61,6 +65,66 @@ export default function MonthlyInvoicesView({ initialSalesRows, initialPurchaseR
   }, [rows, appliedRange, appliedSearch])
 
   const columns = useMemo(() => createTaxInvoiceColumns({ direction, readOnly: true }), [direction])
+
+  const totals = useMemo(() => summarizeTaxInvoiceTotals(filteredRows), [filteredRows])
+
+  const summaryStats: SummaryStat[] = [
+    { label: '합계금액', value: `${formatNumber(totals.total)}원` },
+    { label: '공급가액', value: formatNumber(totals.supply) },
+    { label: '세액', value: formatNumber(totals.tax) },
+    { label: '건수', value: `${formatNumber(totals.count)}건` },
+    ...(totals.unpaid > 0
+      ? [
+          {
+            label: direction === 'sales' ? '미수(결제일 빈 행)' : '미지급(결제일 빈 행)',
+            value: `${totals.unpaid}건`,
+            tone: 'warning' as const,
+          },
+        ]
+      : []),
+    ...(direction === 'purchase' && totals.nonDeductibleCount > 0
+      ? [{ label: '불공', value: `${totals.nonDeductibleCount}건 · 세액 ${formatNumber(totals.nonDeductibleTax)}` }]
+      : []),
+  ]
+
+  // 집계 카드의 항목을 누르면 해당 값으로 검색 조건을 채워 바로 조회한다(기간은 현재 적용된 값 유지).
+  // 이미 그 조건으로 걸러진 항목을 다시 누르면 검색어를 비워 필터를 해제한다.
+  function selectSummaryItem(nextCategory: Exclude<SearchCategory, 'all'>, key: string) {
+    const isActive = appliedSearch.category === nextCategory && appliedSearch.text === key
+    const nextText = isActive ? '' : key
+    const nextSearchCategory: SearchCategory = isActive ? 'all' : nextCategory
+    setCategory(nextSearchCategory)
+    setSearchText(nextText)
+    setAppliedSearch({ category: nextSearchCategory, text: nextText })
+  }
+
+  const activeKey = (c: SearchCategory) =>
+    appliedSearch.category === c && appliedSearch.text ? appliedSearch.text : null
+  // 매출은 거래처별/계정과목별만, 매입은 세부내역별까지 보여준다.
+  const summaryDimensions: SummaryDimension[] = [
+    {
+      title: '거래처별',
+      groups: groupTotals(filteredRows, (r) => r.counterpartyName),
+      activeKey: activeKey('counterpartyName'),
+      onSelect: (key) => selectSummaryItem('counterpartyName', key),
+    },
+    {
+      title: '계정과목별',
+      groups: groupTotals(filteredRows, (r) => r.accountCode),
+      activeKey: activeKey('accountCode'),
+      onSelect: (key) => selectSummaryItem('accountCode', key),
+    },
+    ...(direction === 'purchase'
+      ? [
+          {
+            title: '세부내역별',
+            groups: groupTotals(filteredRows, (r) => r.detail),
+            activeKey: activeKey('detail'),
+            onSelect: (key: string) => selectSummaryItem('detail', key),
+          },
+        ]
+      : []),
+  ]
 
   function handleSearch() {
     setAppliedRange({ start: startMonth, end: endMonth })
@@ -156,6 +220,15 @@ export default function MonthlyInvoicesView({ initialSalesRows, initialPurchaseR
           </Button>
         </div>
       </div>
+
+      {filteredRows.length > 0 && (
+        <SummaryPanel
+          key={direction}
+          stats={summaryStats}
+          grandTotal={totals.total}
+          dimensions={summaryDimensions}
+        />
+      )}
 
       <Table columns={columns} rows={filteredRows} hideSearch footerCells={taxInvoiceFooterCells} />
     </div>
