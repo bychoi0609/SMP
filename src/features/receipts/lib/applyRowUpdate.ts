@@ -1,6 +1,7 @@
 import type { AccountRuleEntry } from '../data/accountRules'
 import { applyRuleSideEffects, findAccountRuleMatch, findAccountRuleMatchForReceipt } from './accountRules'
 import type { ReceiptRow, TaxInvoiceDirection, TaxInvoiceRow } from '../types/tables'
+import { applyDescriptionRule } from './receiptDescriptionRules'
 import { findAccountCodeMatch, isSameCounterpartyAndItem } from './repeatTransaction'
 import { deriveDetailForSiteCode } from './siteCode'
 import { applyTaxInvoiceHardRules } from './taxInvoiceHardRules'
@@ -62,6 +63,10 @@ export function applyReceiptRowUpdate(
         updated = { ...updated, siteCode: ruleMatch.siteCode, detail: deriveDetailForSiteCode(ruleMatch.siteCode, updated.detail) }
       }
     }
+  }
+
+  if ('description' in patch) {
+    updated = applyDescriptionRule(updated)
   }
 
   if ('siteCode' in patch) {
