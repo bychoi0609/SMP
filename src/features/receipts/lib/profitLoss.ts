@@ -37,14 +37,13 @@ export const MANUAL_SECTIONS: ManualSection[] = [
   'NON_OPERATING_EXPENSE',
 ]
 
-// 매입(세금계산서·영수증)의 세부내역 → 원가 구분. 세금계산서는 본사 비용을 "사무실"로, 영수증은
-// 구분 8번 자동 채움값인 "SC본사"로 적기 때문에 둘 다 판관비로 본다. 여기 없는 값/빈 값은 미분류.
+// 매입(세금계산서·영수증)의 세부내역 → 원가 구분. 본사 비용(구분 8번)은 세부내역 "사무실"로 적어 판관비로 본다.
+// 여기 없는 값/빈 값은 미분류.
 export const DETAIL_TO_SECTION: Record<string, ProfitLossSection> = {
   공사: 'CONSTRUCTION_COST',
   제조: 'MANUFACTURING_COST',
   상품: 'MERCHANDISE_COST',
   사무실: 'SGA',
-  SC본사: 'SGA',
 }
 
 // 부가세를 공제받지 못하는 과세유형 — 이 경우 부가세도 비용이라 합계금액을, 나머지는 공급가액을 쓴다.

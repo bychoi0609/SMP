@@ -235,7 +235,7 @@ export default function ProfitLossView({
         <div className="mb-4 flex items-start gap-2 rounded-lg border border-warning-foreground/20 bg-warning px-4 py-3 text-sm text-warning-foreground">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            세부내역이 비어 있거나 공사/제조/상품/사무실/SC본사가 아닌 매입이 {unclassifiedCount}건(
+            세부내역이 비어 있거나 공사/제조/상품/사무실이 아닌 매입이 {unclassifiedCount}건(
             {formatNumber(unclassified.total)}원) 있어요. 영업이익에는 비용으로 빼 두었어요. 정리 화면에서 세부내역을 채우고
             다시 확정해 주세요.
           </div>

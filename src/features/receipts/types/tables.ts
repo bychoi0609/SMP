@@ -45,5 +45,5 @@ export interface ReceiptRow {
 export const SITE_CODE_DETAIL_MAP: Record<number, string> = {
   6: '공사',
   7: '제조',
-  8: 'SC본사',
+  8: '사무실',
 }

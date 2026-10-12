@@ -1,6 +1,6 @@
 import type { AccountRuleEntry } from '../data/accountRules'
 import type { ReceiptRow, TaxInvoiceDirection, TaxInvoiceRow } from '../types/tables'
-import { deriveDetailForSiteCode } from './siteCode'
+import { applyPurchaseSiteCodeFields, deriveDetailForSiteCode } from './siteCode'
 
 // 규칙의 매칭 조건(구분+사업자등록번호+품목명패턴, 또는 구분+상호)을 식별하는 키.
 // 매칭 조건이 비어 있어 사실상 매칭에 쓰일 수 없는 규칙은 null을 반환한다(중복 판정 제외).
@@ -43,6 +43,8 @@ export function applyRuleSideEffects(row: TaxInvoiceRow, match: AccountRuleEntry
   if (match.siteCode !== null && next.siteCode === null) {
     next = { ...next, siteCode: match.siteCode, detail: deriveDetailForSiteCode(match.siteCode, next.detail) }
   }
+  // 매입 구분 8번은 계정과목("상품" 여부)에 따라 프로젝트·세부내역이 달라지므로 계정과목이 채워진 뒤 다시 계산한다.
+  if (match.division === '매입' && next.siteCode === 8) next = applyPurchaseSiteCodeFields(next)
   if (match.note !== '' && next.note === '') next = { ...next, note: match.note }
   if (match.project !== '' && next.project === '') next = { ...next, project: match.project }
   if (match.paymentBasisAccount !== '' && next.paymentBasisAccount === '') {
