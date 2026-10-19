@@ -123,8 +123,16 @@ export function detectTargets(
   return detectSalesRows(workbook, year, monthNumber)
 }
 
-// 1번: 발전소 시트마다 C열 "26년 08월" 행의 D(발전량)·G(SMP금액)·H(REC수량)·I(REC금액)·K(비고).
-// E(발전시간)·F(SMP단가)·J(매출액)는 수식이라 두고, 설비용량은 시트 아래 "설비용량" 표에서 읽는다.
+// 수식 칸은 그대로 두고, 값 칸에만 쓴다.
+function setUnlessFormula(cell: ExcelJS.Cell, value: ExcelJS.CellValue) {
+  const v = cell.value
+  if (v && typeof v === "object" && "formula" in v) return
+  cell.value = value
+}
+
+// 1번: 발전소 시트마다 C열 "26년 08월" 행의 D(발전량)·F(SMP단가)·G(SMP금액)·H(REC수량)·I(REC금액)·K(비고).
+// 시트마다 F·G 중 어느 쪽이 수식인지 달라서(대부분 F 입력·G=ROUNDDOWN(D*F), 일부는 G 입력·F=G/D)
+// 둘 다 수식이 아닐 때만 값을 쓴다. E(발전시간)·J(매출액)는 수식, 설비용량은 시트 아래 "설비용량" 표에서 읽는다.
 function detectPlantSheets(workbook: ExcelJS.Workbook, year: string, mm: string): DetectResult {
   const rowLabel = `${year.slice(2)}년${mm}월`
   const targets: ReportTarget[] = []
@@ -134,7 +142,8 @@ function detectPlantSheets(workbook: ExcelJS.Workbook, year: string, mm: string)
     let monthRow: number | null = null
     let capacityKw: number | null = null
     sheet.eachRow((row, r) => {
-      if (monthRow === null && compact(row.getCell(3)) === rowLabel) monthRow = r
+      // 숨긴 옛 블록(같은 연도 행이 한 번 더 있는 시트)이 있으면 보이는 행을 쓴다.
+      if (monthRow === null && !row.hidden && compact(row.getCell(3)) === rowLabel) monthRow = r
       if (capacityKw === null && compact(row.getCell(10)) === "설비용량") {
         capacityKw = cellNumber(sheet.getCell(r + 1, 10))
       }
@@ -149,7 +158,8 @@ function detectPlantSheets(workbook: ExcelJS.Workbook, year: string, mm: string)
       capacityKw,
       apply: (cell) => {
         sheet.getCell(r, 4).value = cell.generationKwh
-        sheet.getCell(r, 7).value = cell.smpAmount
+        setUnlessFormula(sheet.getCell(r, 6), cell.smpUnitPrice)
+        setUnlessFormula(sheet.getCell(r, 7), cell.smpAmount)
         sheet.getCell(r, 8).value = cell.recQuantity
         sheet.getCell(r, 9).value = cell.recAmount
         sheet.getCell(r, 11).value = statusText(cell.status)
