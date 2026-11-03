@@ -1062,7 +1062,16 @@ export default function ReceiptsApp() {
                       type="button"
                       key={g.month}
                       className={g.month === effectiveReceiptMonthFilter ? 'active' : ''}
-                      onClick={() => setReceiptMonthFilter(g.month)}
+                      onClick={() => {
+                        setReceiptMonthFilter(g.month)
+                        // 지금 카드에 그 달 행이 없으면 빈 표 대신 그 달 행이 있는 첫 카드로 옮긴다.
+                        const hasRows = (sheet: (typeof receiptGrouping.sheets)[number] | undefined) =>
+                          sheet?.rows.some((r) => r.date.slice(0, 7) === g.month) ?? false
+                        if (!hasRows(activeCardSheet)) {
+                          const next = receiptGrouping.sheets.find(hasRows)
+                          if (next) setActiveCardLast4(next.last4)
+                        }
+                      }}
                     >
                       {g.month}
                       {receiptConfirmedMonths.has(g.month) && ' 🔒'}
@@ -1100,8 +1109,28 @@ export default function ReceiptsApp() {
               // 새 행은 날짜가 비어 있어 특정 월 탭에서는 보이지 않으므로 "전체"로 전환한다.
               setReceiptMonthFilter('all')
             }}
+            clearAllLabel={effectiveReceiptMonthFilter === 'all' ? '전체 초기화' : '이 달 초기화'}
+            skipClearAllConfirm={effectiveReceiptMonthFilter !== 'all'}
             onClearAll={() => {
-              // 지금 보이는 카드 × 월의 행만 지운다(확정된 달은 제외).
+              // 월 탭을 골랐으면 그 달 데이터를 모든 카드에서 지운다(확정·엑셀 다운과 같은 월 단위 기준).
+              if (effectiveReceiptMonthFilter !== 'all') {
+                const group = receiptMonthGroups.find((g) => g.month === effectiveReceiptMonthFilter)
+                if (!group) return
+                if (receiptConfirmedMonths.has(group.month)) {
+                  addError('확정된 데이터는 삭제할 수 없습니다. 먼저 확정을 취소해주세요.')
+                  return
+                }
+                if (
+                  window.confirm(
+                    `선택한 ${group.month} 월 데이터 ${group.globalIndices.length}건(모든 카드)을 초기화하시겠습니까? 되돌릴 수 없습니다.`,
+                  )
+                ) {
+                  const toRemove = new Set(group.globalIndices)
+                  setReceiptEntries((prev) => prev.filter((_, i) => !toRemove.has(i)))
+                }
+                return
+              }
+              // "전체" 탭에서는 지금 보고 있는 카드의 행만 지운다(확정된 달은 제외).
               const globalIndices = new Set(receiptGlobalIndices)
               setReceiptEntries((prev) =>
                 prev.filter((_, i) => !globalIndices.has(i) || lockedReceiptGlobalIndices.has(i)),
