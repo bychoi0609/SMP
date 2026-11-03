@@ -90,8 +90,8 @@ export default function ReceiptsApp() {
   const [purchaseConfirmedMonths, setPurchaseConfirmedMonths] = useState<Set<string>>(new Set())
   const [receiptConfirmedMonths, setReceiptConfirmedMonths] = useState<Set<string>>(new Set())
   const [isConfirming, startConfirming] = useTransition()
-  // 영수증 탭은 월 탭이 따로 없어(카드 탭만 있음), 확정할 월을 고르는 별도 선택 상태를 둔다.
-  const [receiptConfirmMonth, setReceiptConfirmMonth] = useState('')
+  // 영수증 월별 필터 — 세금계산서와 같은 방식으로, 카드 탭과 함께 "카드 × 월"로 걸러 보여준다('all' = 전체).
+  const [receiptMonthFilter, setReceiptMonthFilter] = useState<string>('all')
 
   function refreshConfirmedMonths(category: ReceiptCategoryValue) {
     getConfirmedReceiptMonthsAction(category).then((months) => {
@@ -172,8 +172,7 @@ export default function ReceiptsApp() {
   const unconfirmedSalesCount = salesRows.length - lockedSalesGlobalIndices.size
   const unconfirmedPurchaseCount = purchaseRows.length - lockedPurchaseGlobalIndices.size
 
-  // 영수증은 카드 탭만 있고 월 탭이 없으므로, 확정용 월 목록/잠금 판정은 전체(카드 무관)를 기준으로
-  // 따로 계산한다.
+  // 영수증 월 목록/잠금 판정은 전체(카드 무관)를 기준으로 계산한다 — 확정은 카드와 상관없이 월 단위로 이뤄진다.
   const receiptMonthGroups = useMemo(() => groupReceiptsByMonth(receiptEntries), [receiptEntries])
   const lockedReceiptGlobalIndices = useMemo(
     () =>
@@ -183,15 +182,22 @@ export default function ReceiptsApp() {
     [receiptMonthGroups, receiptConfirmedMonths],
   )
 
-  // 확정 대상 월 선택값이 (초기화 등으로) 더 이상 존재하지 않으면 첫 번째 달로 되돌린다.
-  if (
-    receiptMonthGroups.length > 0 &&
-    !receiptMonthGroups.some((g) => g.month === receiptConfirmMonth)
-  ) {
-    setReceiptConfirmMonth(receiptMonthGroups[0].month)
-  } else if (receiptMonthGroups.length === 0 && receiptConfirmMonth !== '') {
-    setReceiptConfirmMonth('')
-  }
+  // 선택된 월이 (초기화 등으로) 더 이상 존재하지 않으면 "전체"로 취급한다.
+  const effectiveReceiptMonthFilter =
+    receiptMonthFilter === 'all' || receiptMonthGroups.some((g) => g.month === receiptMonthFilter)
+      ? receiptMonthFilter
+      : 'all'
+
+  // 선택된 카드 탭의 행 중 선택된 월에 해당하는 행만 보여준다.
+  const { rows: visibleReceiptRows, globalIndices: receiptGlobalIndices } = useMemo(() => {
+    const rows = activeCardSheet?.rows ?? []
+    const globalIndices = activeCardSheet?.globalIndices ?? []
+    if (effectiveReceiptMonthFilter === 'all') return { rows, globalIndices }
+    const picked = rows.flatMap((row, i) =>
+      row.date.slice(0, 7) === effectiveReceiptMonthFilter ? [i] : [],
+    )
+    return { rows: picked.map((i) => rows[i]), globalIndices: picked.map((i) => globalIndices[i]) }
+  }, [activeCardSheet, effectiveReceiptMonthFilter])
 
   function handleConfirmSalesMonth() {
     if (effectiveSalesMonthFilter === 'all') return
@@ -226,18 +232,18 @@ export default function ReceiptsApp() {
     })
   }
   function handleConfirmReceiptMonth() {
-    const group = receiptMonthGroups.find((g) => g.month === receiptConfirmMonth)
+    const group = receiptMonthGroups.find((g) => g.month === effectiveReceiptMonthFilter)
     if (!group) return
     startConfirming(async () => {
-      const result = await confirmReceiptCardMonthAction(receiptConfirmMonth, group.entries)
+      const result = await confirmReceiptCardMonthAction(effectiveReceiptMonthFilter, group.entries)
       if (result.error) return addError(result.error)
       refreshConfirmedMonths('RECEIPT')
     })
   }
   function handleUnconfirmReceiptMonth() {
-    if (!receiptConfirmMonth) return
+    if (effectiveReceiptMonthFilter === 'all') return
     startConfirming(async () => {
-      const result = await unconfirmReceiptCardMonthAction(receiptConfirmMonth)
+      const result = await unconfirmReceiptCardMonthAction(effectiveReceiptMonthFilter)
       if (result.error) return addError(result.error)
       refreshConfirmedMonths('RECEIPT')
     })
@@ -649,7 +655,7 @@ export default function ReceiptsApp() {
     () =>
       createReceiptColumns({
         onChange: (displayIndex, patch) => {
-          const globalIndex = activeCardSheet?.globalIndices[displayIndex]
+          const globalIndex = receiptGlobalIndices[displayIndex]
           if (globalIndex === undefined) return
           setReceiptEntries((prev) =>
             prev.map((entry, i) =>
@@ -661,11 +667,11 @@ export default function ReceiptsApp() {
         accountCodeOptions: receiptAccountCodes,
         detailOptions: receiptDetailOptions,
         isRowLocked: (displayIndex) => {
-          const globalIndex = activeCardSheet?.globalIndices[displayIndex]
+          const globalIndex = receiptGlobalIndices[displayIndex]
           return globalIndex !== undefined && lockedReceiptGlobalIndices.has(globalIndex)
         },
       }),
-    [activeCardSheet, receiptAccountCodes, receiptDetailOptions, accountRules, lockedReceiptGlobalIndices],
+    [receiptGlobalIndices, receiptAccountCodes, receiptDetailOptions, accountRules, lockedReceiptGlobalIndices],
   )
 
   return (
@@ -986,7 +992,7 @@ export default function ReceiptsApp() {
         <Modal title="영수증" onClose={() => setOpenModalTab(null)}>
           <Table
             columns={receiptCols}
-            rows={activeCardSheet?.rows ?? []}
+            rows={visibleReceiptRows}
             searchPlaceholder="거래처명/계정과목 검색..."
             footerCells={receiptFooterCells}
             toolbarExtra={
@@ -1014,31 +1020,19 @@ export default function ReceiptsApp() {
                     e.target.value = ''
                   }}
                 />
-                {receiptMonthGroups.length > 0 && (
+                {effectiveReceiptMonthFilter !== 'all' && (
                   <>
-                    <select
-                      className="rounded-md border border-input bg-transparent px-1.5 py-[2px] text-sm text-foreground"
-                      value={receiptConfirmMonth}
-                      onChange={(e) => setReceiptConfirmMonth(e.target.value)}
-                    >
-                      {receiptMonthGroups.map((g) => (
-                        <option key={g.month} value={g.month}>
-                          {g.month}
-                          {receiptConfirmedMonths.has(g.month) ? ' (확정됨)' : ''}
-                        </option>
-                      ))}
-                    </select>
                     <span
                       className={cn(
                         'rounded-full border px-2 py-0.5 text-xs font-medium',
-                        receiptConfirmedMonths.has(receiptConfirmMonth)
+                        receiptConfirmedMonths.has(effectiveReceiptMonthFilter)
                           ? 'border-transparent bg-secondary text-secondary-foreground'
                           : 'border-border text-muted-foreground',
                       )}
                     >
-                      {receiptConfirmedMonths.has(receiptConfirmMonth) ? '확정됨' : '작업중'}
+                      {receiptConfirmedMonths.has(effectiveReceiptMonthFilter) ? '확정됨' : '작업중'}
                     </span>
-                    {receiptConfirmedMonths.has(receiptConfirmMonth) ? (
+                    {receiptConfirmedMonths.has(effectiveReceiptMonthFilter) ? (
                       <Button variant="outline" disabled={isConfirming} onClick={handleUnconfirmReceiptMonth}>
                         <Unlock className="size-3.5" /> {isConfirming ? '처리 중...' : '확정 취소'}
                       </Button>
@@ -1052,26 +1046,48 @@ export default function ReceiptsApp() {
               </>
             }
             belowToolbar={
-              <nav className="card-tabs">
-                {receiptGrouping.sheets.map((sheet) => (
+              <>
+                <nav className="card-tabs">
                   <button
                     type="button"
-                    key={sheet.last4}
-                    className={sheet.last4 === activeCardSheet?.last4 ? 'active' : ''}
-                    onClick={() => setActiveCardLast4(sheet.last4)}
+                    className={effectiveReceiptMonthFilter === 'all' ? 'active' : ''}
+                    onClick={() => setReceiptMonthFilter('all')}
                   >
-                    {sheet.name}
+                    전체
                   </button>
-                ))}
-              </nav>
+                  {receiptMonthGroups.map((g) => (
+                    <button
+                      type="button"
+                      key={g.month}
+                      className={g.month === effectiveReceiptMonthFilter ? 'active' : ''}
+                      onClick={() => setReceiptMonthFilter(g.month)}
+                    >
+                      {g.month}
+                      {receiptConfirmedMonths.has(g.month) && ' 🔒'}
+                    </button>
+                  ))}
+                </nav>
+                <nav className="card-tabs">
+                  {receiptGrouping.sheets.map((sheet) => (
+                    <button
+                      type="button"
+                      key={sheet.last4}
+                      className={sheet.last4 === activeCardSheet?.last4 ? 'active' : ''}
+                      onClick={() => setActiveCardLast4(sheet.last4)}
+                    >
+                      {sheet.name}
+                    </button>
+                  ))}
+                </nav>
+              </>
             }
             onDeleteRow={(displayIndex) => {
-              const globalIndex = activeCardSheet?.globalIndices[displayIndex]
+              const globalIndex = receiptGlobalIndices[displayIndex]
               if (globalIndex === undefined) return
               setReceiptEntries((prev) => prev.filter((_, i) => i !== globalIndex))
             }}
             isRowDisabled={(displayIndex) => {
-              const globalIndex = activeCardSheet?.globalIndices[displayIndex]
+              const globalIndex = receiptGlobalIndices[displayIndex]
               return globalIndex !== undefined && lockedReceiptGlobalIndices.has(globalIndex)
             }}
             onAddRow={() => {
@@ -1079,9 +1095,12 @@ export default function ReceiptsApp() {
               if (!last4) return
               const blank: ReceiptRow = createBlankReceiptRow()
               setReceiptEntries((prev) => [...prev, { last4, row: blank }])
+              // 새 행은 날짜가 비어 있어 특정 월 탭에서는 보이지 않으므로 "전체"로 전환한다.
+              setReceiptMonthFilter('all')
             }}
             onClearAll={() => {
-              const globalIndices = new Set(activeCardSheet?.globalIndices ?? [])
+              // 지금 보이는 카드 × 월의 행만 지운다(확정된 달은 제외).
+              const globalIndices = new Set(receiptGlobalIndices)
               setReceiptEntries((prev) =>
                 prev.filter((_, i) => !globalIndices.has(i) || lockedReceiptGlobalIndices.has(i)),
               )
