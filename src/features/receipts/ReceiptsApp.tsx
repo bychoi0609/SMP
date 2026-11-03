@@ -410,7 +410,9 @@ export default function ReceiptsApp() {
   // 영수증 모달 안의 "엑셀 다운" 버튼 — 카드별 시트를 모두 담아 내보낸다(현재 선택된 카드 탭과 무관하게
   // 전체 카드 시트를 내보낸다).
   function handleDownloadReceipt() {
-    downloadReceiptWorkbook(receiptGrouping.sheets).catch((e) =>
+    // 월 탭을 골랐으면 그 달만(모든 카드), "전체"면 전체를 내려받는다.
+    const monthKey = effectiveReceiptMonthFilter === 'all' ? undefined : effectiveReceiptMonthFilter
+    downloadReceiptWorkbook(receiptGrouping.sheets, monthKey).catch((e) =>
       addError(e instanceof Error ? e.message : '다운로드 중 오류가 발생했습니다.'),
     )
   }

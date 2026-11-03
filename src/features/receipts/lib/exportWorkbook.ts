@@ -430,8 +430,24 @@ export async function downloadPurchaseMonthWorkbook(rows: TaxInvoiceRow[], month
 }
 
 // 영수증 모달 안의 "엑셀 다운" 버튼에서 쓴다 — 카드별 시트를 모두 담은 파일 하나.
-export async function downloadReceiptWorkbook(sheets: ReceiptSheet[]): Promise<void> {
-  await triggerDownload(buildReceiptWorkbook(sheets), `영수증_${todayFileStamp()}.xlsx`)
+// monthKey('YYYY-MM')를 주면 모든 카드 시트에서 그 달 행만 남기고, 해당 월 행이 없는 카드 시트는 뺀다.
+export async function downloadReceiptWorkbook(sheets: ReceiptSheet[], monthKey?: string): Promise<void> {
+  if (!monthKey) {
+    await triggerDownload(buildReceiptWorkbook(sheets), `영수증_${todayFileStamp()}.xlsx`)
+    return
+  }
+  const monthSheets = sheets
+    .map((sheet) => {
+      const picked = sheet.rows.flatMap((row, i) => (row.date.slice(0, 7) === monthKey ? [i] : []))
+      return {
+        ...sheet,
+        rows: picked.map((i) => sheet.rows[i]),
+        globalIndices: picked.map((i) => sheet.globalIndices[i]),
+      }
+    })
+    .filter((sheet) => sheet.rows.length > 0)
+  if (monthSheets.length === 0) throw new Error(`${monthKey} 영수증 데이터가 없습니다.`)
+  await triggerDownload(buildReceiptWorkbook(monthSheets), `영수증_${monthKey}_${todayFileStamp()}.xlsx`)
 }
 
 // 손익계산서 — 화면 표와 같은 행 구성(flattenProfitLoss)을 모든 줄을 펼친 상태로 내보낸다.
