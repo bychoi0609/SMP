@@ -1,6 +1,6 @@
 import "server-only"
 import { ImapFlow } from "imapflow"
-import { simpleParser } from "mailparser"
+import { simpleParser, type AddressObject, type ParsedMail } from "mailparser"
 
 import { prisma } from "@/lib/prisma"
 import type { SmpMonthly } from "@/generated/prisma/client"
@@ -26,6 +26,22 @@ export type ScanResult = {
   skippedOtherClient: number
   needsReview: number
   erroredFolders: string[]
+}
+
+// 다음 웹메일 인쇄본의 "받는사람" 표기(이름<주소>, 이름이 없으면 주소<주소>)를 재현한다.
+function formatRecipients(to: ParsedMail["to"]): string | null {
+  const groups: AddressObject[] = !to ? [] : Array.isArray(to) ? to : [to]
+  const labels = groups
+    .flatMap((group) => group.value)
+    .filter((addr) => addr.address)
+    .map((addr) => `${addr.name?.trim() || addr.address}<${addr.address}>`)
+  return labels.length > 0 ? labels.join(", ") : null
+}
+
+// 과거 수집분처럼 받는사람이 저장되지 않은 경우, 메일을 받은 IMAP 계정 주소로 대신 표시한다.
+function fallbackRecipient(): string {
+  const account = process.env.DAUM_EMAIL?.trim()
+  return account ? `${account}<${account}>` : ""
 }
 
 export function daumClient() {
@@ -302,6 +318,7 @@ async function processCandidate({
         mailFolder: mailboxPath,
         mailUid: candidate.uid,
         mailSubject: candidate.subject,
+        mailTo: formatRecipients(parsedMail.to),
         rawEmailHtml: html,
       },
     })
@@ -316,6 +333,7 @@ export type RawEmailData = {
   subject: string
   html: string
   receivedDate: Date | null
+  toLabel: string
 }
 
 // PDF를 "원본 메일 그대로" 인쇄하기 위한 HTML을 반환한다.
@@ -334,6 +352,7 @@ export async function ensureRawEmailData(
         subject: row.mailSubject,
         html: row.rawEmailHtml,
         receivedDate: row.receivedDate,
+        toLabel: row.mailTo ?? fallbackRecipient(),
       })
     } else if (row.mailFolder && row.mailUid !== null) {
       toFetch.push(row)
@@ -368,13 +387,19 @@ export async function ensureRawEmailData(
           const parsedMail = await simpleParser(source)
           const html = (parsedMail.html || parsedMail.textAsHtml || "") as string
           const subject = parsedMail.subject ?? row.mailSubject ?? ""
+          const mailTo = formatRecipients(parsedMail.to) ?? row.mailTo
 
           await prisma.smpMonthly.update({
             where: { id: row.id },
-            data: { rawEmailHtml: html, mailSubject: subject },
+            data: { rawEmailHtml: html, mailSubject: subject, mailTo },
           })
 
-          result.set(row.id, { subject, html, receivedDate: row.receivedDate })
+          result.set(row.id, {
+            subject,
+            html,
+            receivedDate: row.receivedDate,
+            toLabel: mailTo ?? fallbackRecipient(),
+          })
         }
       })
     }

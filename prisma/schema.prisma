@@ -162,6 +162,7 @@ model SmpMonthly {
   mailFolder String? // 수집된 메일함 경로 (중복 수집 방지용)
   mailUid    Int? // 수집된 메일 UID (중복 수집 방지용)
   mailSubject   String? // 원본 메일 제목 (PDF 인쇄용)
+  mailTo        String? // 원본 메일 받는사람(To 헤더) 표기 (PDF 머리말용, 없으면 IMAP 계정 주소로 대체)
   rawEmailHtml  String? // 원본 메일 HTML 본문 캐시 (PDF를 원본 메일 그대로 인쇄하기 위함)
 
   createdAt DateTime @default(now())
